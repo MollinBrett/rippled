@@ -52,10 +52,38 @@ json::Value
 cancel(jtx::Account const& account, UInt256 const& offerID);
 
 /**
+ * Bid @p amount in total for @p quantity of the offer @p offerID.
+ */
+json::Value
+counter(
+    jtx::Account const& buyer,
+    UInt256 const& offerID,
+    STAmount const& quantity,
+    STAmount const& amount);
+
+/**
+ * Take the bid @p counterID, as the seller.
+ */
+json::Value
+takeCounter(jtx::Account const& seller, UInt256 const& counterID);
+
+/**
+ * Cancel the bid @p counterID.
+ */
+json::Value
+cancelCounter(jtx::Account const& account, UInt256 const& counterID);
+
+/**
  * The keylet of the offer @p seller creates with sequence @p seq.
  */
 Keylet
 keylet(jtx::Account const& seller, std::uint32_t seq);
+
+/**
+ * The keylet of the bid @p buyer makes with sequence @p seq.
+ */
+Keylet
+counterKeylet(jtx::Account const& buyer, std::uint32_t seq);
 
 /**
  * Sets Counterparties on a create.
@@ -92,7 +120,7 @@ public:
 };
 
 /**
- * Sets Expiration on a create.
+ * Sets Expiration on a create or a bid.
  */
 class Expires
 {

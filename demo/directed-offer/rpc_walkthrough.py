@@ -7,7 +7,8 @@ each one, because a standalone ledger only advances when asked to.
 
 Story: gw issues a BOND token (MPT) and a USD stablecoin (IOU). alice holds
 bonds and offers 50 of them to bob and carol only, paid in USD, at
-1+ for 10, 10+ for 9, 20+ for 8. dave is not on the list.
+1+ for 10, 10+ for 9, 20+ for 8. dave is not on the list. Then alice offers
+20 more to bob, and they negotiate with a locked bid.
 """
 
 import json
@@ -51,6 +52,14 @@ def submit(tx, secret, expect="tesSUCCESS", label=None):
 
 def tx_meta(res):
     return rpc("tx", transaction=res["tx_json"]["hash"])["meta"]
+
+
+def created(res, entry_type):
+    return next(
+        n["CreatedNode"]["LedgerIndex"]
+        for n in tx_meta(res)["AffectedNodes"]
+        if n.get("CreatedNode", {}).get("LedgerEntryType") == entry_type
+    )
 
 
 def new_account(name):
@@ -279,6 +288,76 @@ def main():
     check("alice BOND after cancel", bond_balance(alice, issuance), "51")
     gone = rpc("ledger_entry", index=offer_id)
     check("offer deleted", gone.get("error"), "entryNotFound")
+
+    print("Negotiation (DirectedOfferCounterCreate)")
+    res = submit(
+        dict(
+            create,
+            Amount=bond(20),
+            PriceTiers=[
+                {"PriceTier": {"MinQuantity": bond(1), "UnitPrice": dollars(10)}}
+            ],
+            Counterparties=[{"CounterpartyEntry": {"Account": bob["address"]}}],
+        ),
+        alice["secret"],
+        label="alice offers 20 BOND to bob at 10",
+    )
+    offer2 = created(res, "DirectedOffer")
+
+    def bid(buyer, qty, total, expect="tesSUCCESS"):
+        res = submit(
+            {
+                "TransactionType": "DirectedOfferCounterCreate",
+                "Account": buyer["address"],
+                "DirectedOfferID": offer2,
+                "Quantity": bond(qty),
+                "Amount": dollars(total),
+            },
+            buyer["secret"],
+            expect=expect,
+            label=f"{buyer['name']} bids {total} USD for {qty}",
+        )
+        return created(res, "DirectedOfferCounter") if expect == "tesSUCCESS" else None
+
+    bid(carol, 20, 150, expect="tecNO_PERMISSION")
+    low = bid(bob, 10, 50)
+    check("bob USD with 50 locked", usd_balance(bob, gw), "729")
+    seller_bids = rpc(
+        "account_objects", account=alice["address"], type="directed_offer_counter"
+    )["account_objects"]
+    check("alice sees the bid", [o["index"] for o in seller_bids], [low])
+    submit(
+        {
+            "TransactionType": "DirectedOfferCancel",
+            "Account": alice["address"],
+            "DirectedOfferCounterID": low,
+        },
+        alice["secret"],
+        label="alice declines it",
+    )
+    check("bob USD refunded", usd_balance(bob, gw), "779")
+
+    better = bid(bob, 20, 150)
+    take = {
+        "TransactionType": "DirectedOfferAccept",
+        "Account": alice["address"],
+        "DirectedOfferCounterID": better,
+    }
+    submit(
+        dict(take, Account=bob["address"]),
+        bob["secret"],
+        "tecNO_PERMISSION",
+        "bob takes his own bid",
+    )
+    submit(take, alice["secret"], label="alice takes bob's bid")
+    check("bob BOND", bond_balance(bob, issuance), "44")
+    check("bob USD (paid 150, not 200)", usd_balance(bob, gw), "629")
+    check("alice USD", usd_balance(alice, gw), "571")
+    check("alice BOND", bond_balance(alice, issuance), "31")
+    check(
+        "offer closed", rpc("ledger_entry", index=offer2).get("error"), "entryNotFound"
+    )
+    check("bid gone", rpc("ledger_entry", index=better).get("error"), "entryNotFound")
 
     print(f"\n{'ALL PASSED' if failures == 0 else f'{failures} FAILURE(S)'}")
     return 1 if failures else 0

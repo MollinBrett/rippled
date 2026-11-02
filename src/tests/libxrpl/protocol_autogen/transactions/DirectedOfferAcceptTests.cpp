@@ -32,17 +32,19 @@ TEST(TransactionsDirectedOfferAcceptTests, BuilderSettersRoundTrip)
     auto const directedOfferIDValue = canonical_UINT256();
     auto const quantityValue = canonical_AMOUNT();
     auto const sendMaxValue = canonical_AMOUNT();
+    auto const directedOfferCounterIDValue = canonical_UINT256();
 
     DirectedOfferAcceptBuilder builder{
         accountValue,
-        directedOfferIDValue,
-        quantityValue,
         sequenceValue,
         feeValue
     };
 
     // Set optional fields
+    builder.setDirectedOfferID(directedOfferIDValue);
+    builder.setQuantity(quantityValue);
     builder.setSendMax(sendMaxValue);
+    builder.setDirectedOfferCounterID(directedOfferCounterIDValue);
 
     auto tx = builder.build(publicKey, secretKey);
 
@@ -59,25 +61,37 @@ TEST(TransactionsDirectedOfferAcceptTests, BuilderSettersRoundTrip)
     EXPECT_EQ(tx.getFee(), feeValue);
 
     // Verify required fields
+    // Verify optional fields
     {
         auto const& expected = directedOfferIDValue;
-        auto const actual = tx.getDirectedOfferID();
-        expectEqualField(expected, actual, "sfDirectedOfferID");
+        auto const actualOpt = tx.getDirectedOfferID();
+        ASSERT_TRUE(actualOpt.has_value()) << "Optional field sfDirectedOfferID should be present";
+        expectEqualField(expected, *actualOpt, "sfDirectedOfferID");
+        EXPECT_TRUE(tx.hasDirectedOfferID());
     }
 
     {
         auto const& expected = quantityValue;
-        auto const actual = tx.getQuantity();
-        expectEqualField(expected, actual, "sfQuantity");
+        auto const actualOpt = tx.getQuantity();
+        ASSERT_TRUE(actualOpt.has_value()) << "Optional field sfQuantity should be present";
+        expectEqualField(expected, *actualOpt, "sfQuantity");
+        EXPECT_TRUE(tx.hasQuantity());
     }
 
-    // Verify optional fields
     {
         auto const& expected = sendMaxValue;
         auto const actualOpt = tx.getSendMax();
         ASSERT_TRUE(actualOpt.has_value()) << "Optional field sfSendMax should be present";
         expectEqualField(expected, *actualOpt, "sfSendMax");
         EXPECT_TRUE(tx.hasSendMax());
+    }
+
+    {
+        auto const& expected = directedOfferCounterIDValue;
+        auto const actualOpt = tx.getDirectedOfferCounterID();
+        ASSERT_TRUE(actualOpt.has_value()) << "Optional field sfDirectedOfferCounterID should be present";
+        expectEqualField(expected, *actualOpt, "sfDirectedOfferCounterID");
+        EXPECT_TRUE(tx.hasDirectedOfferCounterID());
     }
 
 }
@@ -99,17 +113,19 @@ TEST(TransactionsDirectedOfferAcceptTests, BuilderFromStTxRoundTrip)
     auto const directedOfferIDValue = canonical_UINT256();
     auto const quantityValue = canonical_AMOUNT();
     auto const sendMaxValue = canonical_AMOUNT();
+    auto const directedOfferCounterIDValue = canonical_UINT256();
 
     // Build an initial transaction
     DirectedOfferAcceptBuilder initialBuilder{
         accountValue,
-        directedOfferIDValue,
-        quantityValue,
         sequenceValue,
         feeValue
     };
 
+    initialBuilder.setDirectedOfferID(directedOfferIDValue);
+    initialBuilder.setQuantity(quantityValue);
     initialBuilder.setSendMax(sendMaxValue);
+    initialBuilder.setDirectedOfferCounterID(directedOfferCounterIDValue);
 
     auto initialTx = initialBuilder.build(publicKey, secretKey);
 
@@ -127,24 +143,33 @@ TEST(TransactionsDirectedOfferAcceptTests, BuilderFromStTxRoundTrip)
     EXPECT_EQ(rebuiltTx.getFee(), feeValue);
 
     // Verify required fields
+    // Verify optional fields
     {
         auto const& expected = directedOfferIDValue;
-        auto const actual = rebuiltTx.getDirectedOfferID();
-        expectEqualField(expected, actual, "sfDirectedOfferID");
+        auto const actualOpt = rebuiltTx.getDirectedOfferID();
+        ASSERT_TRUE(actualOpt.has_value()) << "Optional field sfDirectedOfferID should be present";
+        expectEqualField(expected, *actualOpt, "sfDirectedOfferID");
     }
 
     {
         auto const& expected = quantityValue;
-        auto const actual = rebuiltTx.getQuantity();
-        expectEqualField(expected, actual, "sfQuantity");
+        auto const actualOpt = rebuiltTx.getQuantity();
+        ASSERT_TRUE(actualOpt.has_value()) << "Optional field sfQuantity should be present";
+        expectEqualField(expected, *actualOpt, "sfQuantity");
     }
 
-    // Verify optional fields
     {
         auto const& expected = sendMaxValue;
         auto const actualOpt = rebuiltTx.getSendMax();
         ASSERT_TRUE(actualOpt.has_value()) << "Optional field sfSendMax should be present";
         expectEqualField(expected, *actualOpt, "sfSendMax");
+    }
+
+    {
+        auto const& expected = directedOfferCounterIDValue;
+        auto const actualOpt = rebuiltTx.getDirectedOfferCounterID();
+        ASSERT_TRUE(actualOpt.has_value()) << "Optional field sfDirectedOfferCounterID should be present";
+        expectEqualField(expected, *actualOpt, "sfDirectedOfferCounterID");
     }
 
 }
@@ -190,13 +215,9 @@ TEST(TransactionsDirectedOfferAcceptTests, OptionalFieldsReturnNullopt)
     auto const feeValue = canonical_AMOUNT();
 
     // Transaction-specific required field values
-    auto const directedOfferIDValue = canonical_UINT256();
-    auto const quantityValue = canonical_AMOUNT();
 
     DirectedOfferAcceptBuilder builder{
         accountValue,
-        directedOfferIDValue,
-        quantityValue,
         sequenceValue,
         feeValue
     };
@@ -206,8 +227,14 @@ TEST(TransactionsDirectedOfferAcceptTests, OptionalFieldsReturnNullopt)
     auto tx = builder.build(publicKey, secretKey);
 
     // Verify optional fields are not present
+    EXPECT_FALSE(tx.hasDirectedOfferID());
+    EXPECT_FALSE(tx.getDirectedOfferID().has_value());
+    EXPECT_FALSE(tx.hasQuantity());
+    EXPECT_FALSE(tx.getQuantity().has_value());
     EXPECT_FALSE(tx.hasSendMax());
     EXPECT_FALSE(tx.getSendMax().has_value());
+    EXPECT_FALSE(tx.hasDirectedOfferCounterID());
+    EXPECT_FALSE(tx.getDirectedOfferCounterID().has_value());
 }
 
 }

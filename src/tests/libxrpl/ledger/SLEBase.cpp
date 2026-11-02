@@ -7,24 +7,25 @@
 #include <xrpl/ledger/ReadView.h>
 #include <xrpl/ledger/entries/AMMEntry.h>  // IWYU pragma: keep
 #include <xrpl/ledger/entries/AccountRootEntry.h>
-#include <xrpl/ledger/entries/AmendmentsEntry.h>       // IWYU pragma: keep
-#include <xrpl/ledger/entries/CheckEntry.h>            // IWYU pragma: keep
-#include <xrpl/ledger/entries/CredentialEntry.h>       // IWYU pragma: keep
-#include <xrpl/ledger/entries/DIDEntry.h>              // IWYU pragma: keep
-#include <xrpl/ledger/entries/DelegateEntry.h>         // IWYU pragma: keep
-#include <xrpl/ledger/entries/DepositPreauthEntry.h>   // IWYU pragma: keep
-#include <xrpl/ledger/entries/DirectedOfferEntry.h>    // IWYU pragma: keep
-#include <xrpl/ledger/entries/DirectoryNodeEntry.h>    // IWYU pragma: keep
-#include <xrpl/ledger/entries/EscrowEntry.h>           // IWYU pragma: keep
-#include <xrpl/ledger/entries/FeeSettingsEntry.h>      // IWYU pragma: keep
-#include <xrpl/ledger/entries/LedgerHashesEntry.h>     // IWYU pragma: keep
-#include <xrpl/ledger/entries/LoanBrokerEntry.h>       // IWYU pragma: keep
-#include <xrpl/ledger/entries/LoanEntry.h>             // IWYU pragma: keep
-#include <xrpl/ledger/entries/MPTokenEntry.h>          // IWYU pragma: keep
-#include <xrpl/ledger/entries/MPTokenIssuanceEntry.h>  // IWYU pragma: keep
-#include <xrpl/ledger/entries/NFTokenOfferEntry.h>     // IWYU pragma: keep
-#include <xrpl/ledger/entries/NFTokenPageEntry.h>      // IWYU pragma: keep
-#include <xrpl/ledger/entries/NegativeUNLEntry.h>      // IWYU pragma: keep
+#include <xrpl/ledger/entries/AmendmentsEntry.h>            // IWYU pragma: keep
+#include <xrpl/ledger/entries/CheckEntry.h>                 // IWYU pragma: keep
+#include <xrpl/ledger/entries/CredentialEntry.h>            // IWYU pragma: keep
+#include <xrpl/ledger/entries/DIDEntry.h>                   // IWYU pragma: keep
+#include <xrpl/ledger/entries/DelegateEntry.h>              // IWYU pragma: keep
+#include <xrpl/ledger/entries/DepositPreauthEntry.h>        // IWYU pragma: keep
+#include <xrpl/ledger/entries/DirectedOfferCounterEntry.h>  // IWYU pragma: keep
+#include <xrpl/ledger/entries/DirectedOfferEntry.h>         // IWYU pragma: keep
+#include <xrpl/ledger/entries/DirectoryNodeEntry.h>         // IWYU pragma: keep
+#include <xrpl/ledger/entries/EscrowEntry.h>                // IWYU pragma: keep
+#include <xrpl/ledger/entries/FeeSettingsEntry.h>           // IWYU pragma: keep
+#include <xrpl/ledger/entries/LedgerHashesEntry.h>          // IWYU pragma: keep
+#include <xrpl/ledger/entries/LoanBrokerEntry.h>            // IWYU pragma: keep
+#include <xrpl/ledger/entries/LoanEntry.h>                  // IWYU pragma: keep
+#include <xrpl/ledger/entries/MPTokenEntry.h>               // IWYU pragma: keep
+#include <xrpl/ledger/entries/MPTokenIssuanceEntry.h>       // IWYU pragma: keep
+#include <xrpl/ledger/entries/NFTokenOfferEntry.h>          // IWYU pragma: keep
+#include <xrpl/ledger/entries/NFTokenPageEntry.h>           // IWYU pragma: keep
+#include <xrpl/ledger/entries/NegativeUNLEntry.h>           // IWYU pragma: keep
 #include <xrpl/ledger/entries/OfferEntry.h>
 #include <xrpl/ledger/entries/OracleEntry.h>              // IWYU pragma: keep
 #include <xrpl/ledger/entries/PayChannelEntry.h>          // IWYU pragma: keep

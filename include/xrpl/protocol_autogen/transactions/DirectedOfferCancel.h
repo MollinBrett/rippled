@@ -48,14 +48,55 @@ public:
     // Transaction-specific field getters
 
     /**
-     * @brief Get sfDirectedOfferID (SoeRequired)
-     * @return The field value.
+     * @brief Get sfDirectedOfferID (SoeOptional)
+     * @return The field value, or std::nullopt if not present.
      */
     [[nodiscard]]
-    SF_UINT256::type::value_type
+    protocol_autogen::Optional<SF_UINT256::type::value_type>
     getDirectedOfferID() const
     {
-        return this->tx_->at(sfDirectedOfferID);
+        if (hasDirectedOfferID())
+        {
+            return this->tx_->at(sfDirectedOfferID);
+        }
+        return std::nullopt;
+    }
+
+    /**
+     * @brief Check if sfDirectedOfferID is present.
+     * @return True if the field is present, false otherwise.
+     */
+    [[nodiscard]]
+    bool
+    hasDirectedOfferID() const
+    {
+        return this->tx_->isFieldPresent(sfDirectedOfferID);
+    }
+
+    /**
+     * @brief Get sfDirectedOfferCounterID (SoeOptional)
+     * @return The field value, or std::nullopt if not present.
+     */
+    [[nodiscard]]
+    protocol_autogen::Optional<SF_UINT256::type::value_type>
+    getDirectedOfferCounterID() const
+    {
+        if (hasDirectedOfferCounterID())
+        {
+            return this->tx_->at(sfDirectedOfferCounterID);
+        }
+        return std::nullopt;
+    }
+
+    /**
+     * @brief Check if sfDirectedOfferCounterID is present.
+     * @return True if the field is present, false otherwise.
+     */
+    [[nodiscard]]
+    bool
+    hasDirectedOfferCounterID() const
+    {
+        return this->tx_->isFieldPresent(sfDirectedOfferCounterID);
     }
 };
 
@@ -72,17 +113,15 @@ public:
     /**
      * @brief Construct a new DirectedOfferCancelBuilder with required fields.
      * @param account The account initiating the transaction.
-     * @param directedOfferID The sfDirectedOfferID field value.
      * @param sequence Optional sequence number for the transaction.
      * @param fee Optional fee for the transaction.
      */
     DirectedOfferCancelBuilder(SF_ACCOUNT::type::value_type account,
-                     std::decay_t<typename SF_UINT256::type::value_type> const& directedOfferID,                    std::optional<SF_UINT32::type::value_type> sequence = std::nullopt,
+                    std::optional<SF_UINT32::type::value_type> sequence = std::nullopt,
                     std::optional<SF_AMOUNT::type::value_type> fee = std::nullopt
 )
         : TransactionBuilderBase<DirectedOfferCancelBuilder>(ttDIRECTED_OFFER_CANCEL, account, sequence, fee)
     {
-        setDirectedOfferID(directedOfferID);
     }
 
     /**
@@ -104,13 +143,24 @@ public:
      */
 
     /**
-     * @brief Set sfDirectedOfferID (SoeRequired)
+     * @brief Set sfDirectedOfferID (SoeOptional)
      * @return Reference to this builder for method chaining.
      */
     DirectedOfferCancelBuilder&
     setDirectedOfferID(std::decay_t<typename SF_UINT256::type::value_type> const& value)
     {
         object_[sfDirectedOfferID] = value;
+        return *this;
+    }
+
+    /**
+     * @brief Set sfDirectedOfferCounterID (SoeOptional)
+     * @return Reference to this builder for method chaining.
+     */
+    DirectedOfferCancelBuilder&
+    setDirectedOfferCounterID(std::decay_t<typename SF_UINT256::type::value_type> const& value)
+    {
+        object_[sfDirectedOfferCounterID] = value;
         return *this;
     }
 

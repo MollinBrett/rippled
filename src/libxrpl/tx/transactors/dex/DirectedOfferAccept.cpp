@@ -6,6 +6,7 @@
 #include <xrpl/ledger/ApplyView.h>
 #include <xrpl/ledger/ReadView.h>
 #include <xrpl/ledger/View.h>
+#include <xrpl/ledger/entries/DirectedOfferCounterEntry.h>
 #include <xrpl/ledger/entries/DirectedOfferEntry.h>
 #include <xrpl/ledger/helpers/AccountRootHelpers.h>
 #include <xrpl/ledger/helpers/DirectedOfferHelpers.h>
@@ -50,6 +51,72 @@ buyerCost(
     return addTransferFee(price, transferRate(view, price));
 }
 
+// The seller takes a buyer's bid: both legs are already locked, so only who
+// may take it and whether each side can still receive are checked.
+TER
+preclaimTakeCounter(PreclaimContext const& ctx, UInt256 const& counterID)
+{
+    DirectedOfferCounterEntryR const counter(counterID, ctx.view);
+    if (!counter)
+    {
+        JLOG(ctx.j.debug()) << "DirectedOfferCounter does not exist.";
+        return tecNO_ENTRY;
+    }
+
+    DirectedOfferEntryR const offer(counter->at(sfDirectedOfferID), ctx.view);
+    if (!offer)
+    {
+        JLOG(ctx.j.debug()) << "The bid's DirectedOffer no longer exists.";
+        return tecNO_ENTRY;
+    }
+
+    AccountID const seller = offer->at(sfAccount);
+    if (ctx.tx[sfAccount] != seller)
+    {
+        JLOG(ctx.j.debug()) << "Only the seller may take a bid.";
+        return tecNO_PERMISSION;
+    }
+
+    if (hasExpired(ctx.view, offer->at(~sfExpiration)) ||
+        hasExpired(ctx.view, counter->at(~sfExpiration)))
+    {
+        JLOG(ctx.j.debug()) << "DirectedOffer or bid has expired.";
+        return tecEXPIRED;
+    }
+
+    // Domain membership can lapse after the bid was made.
+    AccountID const buyer = counter->at(sfAccount);
+    if (!isDirectedOfferBuyer(ctx.view, *offer.rawSle(), buyer))
+    {
+        JLOG(ctx.j.debug()) << "Bidder is no longer a buyer this offer names.";
+        return tecNO_PERMISSION;
+    }
+
+    STAmount const quantity = counter->at(sfQuantity);
+    if (auto const ter = checkDirectedOfferQuantity(*offer.rawSle(), quantity, ctx.j);
+        !isTesSuccess(ter))
+        return ter;
+
+    if (auto const ter = checkDirectedOfferDelivery(ctx.view, seller, buyer, quantity);
+        !isTesSuccess(ter))
+        return ter;
+
+    // Payment leg: the locked payment can be released to the seller.
+    STAmount const amount = counter->at(sfAmount);
+    if (isXRP(amount))
+        return tesSUCCESS;
+
+    if (auto const ter = std::visit(
+            [&]<class T>(T const&) {
+                return escrowUnlockPreclaimHelper<T>(ctx.view, seller, amount);
+            },
+            amount.asset().value());
+        !isTesSuccess(ter))
+        return ter;
+
+    return canTransfer(ctx.view, amount.asset(), buyer, seller);
+}
+
 }  // namespace
 
 bool
@@ -61,17 +128,41 @@ DirectedOfferAccept::checkExtraFeatures(PreflightContext const& ctx)
 NotTEC
 DirectedOfferAccept::preflight(PreflightContext const& ctx)
 {
-    if (ctx.tx[sfDirectedOfferID] == beast::kZero)
+    // Exactly one of a purchase (DirectedOfferID with Quantity) and the
+    // seller taking a bid (DirectedOfferCounterID alone), as NFTokenAcceptOffer
+    // takes a sell offer or a buy offer.
+    auto const offerID = ctx.tx[~sfDirectedOfferID];
+    auto const counterID = ctx.tx[~sfDirectedOfferCounterID];
+    if (static_cast<bool>(offerID) == static_cast<bool>(counterID))
     {
-        JLOG(ctx.j.debug()) << "Malformed transaction: zero DirectedOfferID.";
+        JLOG(ctx.j.debug()) << "Malformed transaction: needs exactly one of DirectedOfferID "
+                               "and DirectedOfferCounterID.";
         return temMALFORMED;
     }
 
-    STAmount const quantity = ctx.tx[sfQuantity];
-    if (quantity <= beast::kZero ||
-        (quantity.holds<MPTIssue>() && quantity.mpt() > MPTAmount{kMaxMpTokenAmount}))
+    if (counterID)
     {
-        JLOG(ctx.j.debug()) << "Malformed transaction: bad quantity " << quantity.getFullText();
+        if (*counterID == beast::kZero || ctx.tx.isFieldPresent(sfQuantity) ||
+            ctx.tx.isFieldPresent(sfSendMax))
+        {
+            JLOG(ctx.j.debug()) << "Malformed transaction: a bid is taken by its ID alone.";
+            return temMALFORMED;
+        }
+        return tesSUCCESS;
+    }
+
+    auto const quantity = ctx.tx[~sfQuantity];
+    if (*offerID == beast::kZero || !quantity)
+    {
+        JLOG(ctx.j.debug()) << "Malformed transaction: a purchase needs DirectedOfferID and "
+                               "Quantity.";
+        return temMALFORMED;
+    }
+
+    if (*quantity <= beast::kZero ||
+        (quantity->holds<MPTIssue>() && quantity->mpt() > MPTAmount{kMaxMpTokenAmount}))
+    {
+        JLOG(ctx.j.debug()) << "Malformed transaction: bad quantity " << quantity->getFullText();
         return temBAD_AMOUNT;
     }
 
@@ -87,7 +178,10 @@ DirectedOfferAccept::preflight(PreflightContext const& ctx)
 TER
 DirectedOfferAccept::preclaim(PreclaimContext const& ctx)
 {
-    DirectedOfferEntryR const offer(ctx.tx[sfDirectedOfferID], ctx.view);
+    if (auto const counterID = ctx.tx[~sfDirectedOfferCounterID])
+        return preclaimTakeCounter(ctx, *counterID);
+
+    DirectedOfferEntryR const offer(*ctx.tx[~sfDirectedOfferID], ctx.view);
     if (!offer)
     {
         JLOG(ctx.j.debug()) << "DirectedOffer does not exist.";
@@ -114,28 +208,10 @@ DirectedOfferAccept::preclaim(PreclaimContext const& ctx)
         return tecNO_PERMISSION;
     }
 
-    STAmount const available = offer->at(sfAmount);
-    STAmount const quantity = ctx.tx[sfQuantity];
-    if (quantity.asset() != available.asset())
-    {
-        JLOG(ctx.j.debug()) << "Quantity is not in the sold asset.";
-        return tecWRONG_ASSET;
-    }
-
-    if (quantity > available)
-    {
-        JLOG(ctx.j.debug()) << "Quantity " << quantity.getFullText() << " is more than the "
-                            << available.getFullText() << " left.";
-        return tecINSUFFICIENT_FUNDS;
-    }
-
-    // An IOU remainder is rounded to 16 significant digits; refuse a quantity
-    // the offer cannot give up exactly, so no value is made or lost.
-    if (available - (available - quantity) != quantity)
-    {
-        JLOG(ctx.j.debug()) << "Quantity cannot be taken from the remainder exactly.";
-        return tecPRECISION_LOSS;
-    }
+    STAmount const quantity = *ctx.tx[~sfQuantity];
+    if (auto const ter = checkDirectedOfferQuantity(*offer.rawSle(), quantity, ctx.j);
+        !isTesSuccess(ter))
+        return ter;
 
     Asset const paymentAsset = offer->at(sfPaymentAsset);
     auto const price =
@@ -212,34 +288,16 @@ DirectedOfferAccept::preclaim(PreclaimContext const& ctx)
             return ter;
     }
 
-    // Delivery leg: the seller is not frozen or locked in the sold asset, which
-    // stays cancellable and so stays under the issuer's controls, and the
-    // buyer may receive it.
-    if (!isXRP(quantity))
-    {
-        if (auto const ter = checkFrozen(ctx.view, seller, quantity.asset()); !isTesSuccess(ter))
-            return ter;
-
-        if (auto const ter = std::visit(
-                [&]<class T>(T const&) {
-                    return escrowUnlockPreclaimHelper<T>(ctx.view, buyer, quantity);
-                },
-                quantity.asset().value());
-            !isTesSuccess(ter))
-            return ter;
-
-        if (auto const ter = canTransfer(ctx.view, quantity.asset(), seller, buyer);
-            !isTesSuccess(ter))
-            return ter;
-    }
-
-    return tesSUCCESS;
+    return checkDirectedOfferDelivery(ctx.view, seller, buyer, quantity);
 }
 
 TER
 DirectedOfferAccept::doApply()
 {
-    DirectedOfferEntryW offer(ctx_.tx[sfDirectedOfferID], view(), j_);
+    if (auto const counterID = ctx_.tx[~sfDirectedOfferCounterID])
+        return takeCounter(*counterID);
+
+    DirectedOfferEntryW offer(*ctx_.tx[~sfDirectedOfferID], view(), j_);
     if (!offer)
     {
         // LCOV_EXCL_START
@@ -249,7 +307,7 @@ DirectedOfferAccept::doApply()
     }
 
     AccountID const seller = offer->at(sfAccount);
-    STAmount const quantity = ctx_.tx[sfQuantity];
+    STAmount const quantity = *ctx_.tx[~sfQuantity];
     Asset const paymentAsset = offer->at(sfPaymentAsset);
     auto const price =
         directedOfferPrice(offer->getFieldArray(sfPriceTiers), quantity, paymentAsset);
@@ -295,52 +353,82 @@ DirectedOfferAccept::doApply()
         // LCOV_EXCL_STOP
     }
 
-    if (isXRP(quantity))
-    {
-        sleBuyer->at(sfBalance) += quantity;
-    }
-    else
-    {
-        auto const storedRate = offer->at(~sfTransferRate);
-        Rate const lockedRate = storedRate ? Rate{*storedRate} : kParityRate;
-        AccountID const issuer = quantity.getIssuer();
-        // A holding created for the buyer is reserved against what is left
-        // after an XRP payment.
-        XRPAmount const buyerXrp = isXRP(*price) ? preFeeBalance_ - price->xrp() : preFeeBalance_;
-        if (auto const ter = std::visit(
-                [&]<class T>(T const&) {
-                    return escrowUnlockApplyHelper<T>(
-                        ctx_.getApplyViewContext(),
-                        lockedRate,
-                        sleBuyer,
-                        buyerXrp,
-                        quantity,
-                        issuer,
-                        seller,
-                        accountID_,
-                        true,
-                        j_);
-                },
-                quantity.asset().value());
-            !isTesSuccess(ter))
-            return ter;
-    }
+    // A holding created for the buyer is reserved against what is left after
+    // an XRP payment.
+    XRPAmount const buyerXrp = isXRP(*price) ? preFeeBalance_ - price->xrp() : preFeeBalance_;
+    auto const ter = deliverDirectedOffer(
+        ctx_.getApplyViewContext(),
+        offer.mutableRawSle(),
+        sleBuyer,
+        buyerXrp,
+        quantity,
+        true,
+        preFeeBalance_,
+        false,
+        j_);
     view().update(sleBuyer);
+    return ter;
+}
 
-    // Keep the offer open while someone can still buy the smallest tier;
-    // otherwise return the remainder and close it.
-    STAmount const remaining = offer->at(sfAmount) - quantity;
-    offer->at(sfAmount) = remaining;
-    offer.update();
-
-    auto const& tiers = offer->getFieldArray(sfPriceTiers);
-    if (remaining < tiers.begin()->at(sfMinQuantity))
+TER
+DirectedOfferAccept::takeCounter(UInt256 const& counterID)
+{
+    DirectedOfferCounterEntryW counter(counterID, view(), j_);
+    if (!counter)
     {
-        return closeDirectedOffer(
-            ctx_.getApplyViewContext(), offer.mutableRawSle(), preFeeBalance_, false, j_);
+        // LCOV_EXCL_START
+        UNREACHABLE("xrpl::DirectedOfferAccept::takeCounter : preclaim found the bid");
+        return tecINTERNAL;
+        // LCOV_EXCL_STOP
     }
 
-    return tesSUCCESS;
+    DirectedOfferEntryW offer(counter->at(sfDirectedOfferID), view(), j_);
+    if (!offer)
+    {
+        // LCOV_EXCL_START
+        UNREACHABLE("xrpl::DirectedOfferAccept::takeCounter : preclaim found the offer");
+        return tecINTERNAL;
+        // LCOV_EXCL_STOP
+    }
+
+    AccountID const buyer = counter->at(sfAccount);
+    STAmount const quantity = counter->at(sfQuantity);
+
+    // Payment leg: release the locked payment to the seller, who submits and
+    // so may have its holding created.
+    if (auto const ter = closeDirectedOfferCounter(
+            ctx_.getApplyViewContext(),
+            counter.mutableRawSle(),
+            accountID_,
+            preFeeBalance_,
+            true,
+            j_);
+        !isTesSuccess(ter))
+        return ter;
+
+    // Delivery leg: release the quantity from the offer to the buyer, whose
+    // holding must already exist.
+    auto const sleBuyer = view().peek(keylet::account(buyer));
+    if (!sleBuyer)
+    {
+        // LCOV_EXCL_START
+        UNREACHABLE("xrpl::DirectedOfferAccept::takeCounter : the buyer exists");
+        return tefINTERNAL;
+        // LCOV_EXCL_STOP
+    }
+
+    auto const ter = deliverDirectedOffer(
+        ctx_.getApplyViewContext(),
+        offer.mutableRawSle(),
+        sleBuyer,
+        sleBuyer->at(sfBalance).value().xrp(),
+        quantity,
+        false,
+        preFeeBalance_,
+        true,
+        j_);
+    view().update(sleBuyer);
+    return ter;
 }
 
 void

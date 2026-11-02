@@ -197,6 +197,20 @@ directedOffer(UInt256 const& key) noexcept
 /** @} */
 
 /**
+ * A DirectedOfferCounter
+ */
+/** @{ */
+Keylet
+directedOfferCounter(AccountID const& id, SeqProxy const& seq) noexcept;
+
+inline Keylet
+directedOfferCounter(UInt256 const& key) noexcept
+{
+    return {ltDIRECTED_OFFER_COUNTER, key};
+}
+/** @} */
+
+/**
  * A TransactionProposal
  */
 /** @{ */

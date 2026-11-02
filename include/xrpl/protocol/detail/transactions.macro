@@ -1098,8 +1098,9 @@ TRANSACTION(ttDIRECTED_OFFER_CREATE, 120, DirectedOfferCreate,
     {sfExpiration, SoeOptional},
 }))
 
-/** This transaction type buys part or all of a DirectedOffer, settling the
-    payment and the delivery of the locked asset atomically. */
+/** This transaction type buys part or all of a DirectedOffer, or takes a
+    DirectedOfferCounter bid against it, settling the payment and the delivery
+    of the locked asset atomically. */
 #if TRANSACTION_INCLUDE
 #   include <xrpl/tx/transactors/dex/DirectedOfferAccept.h>
 #endif
@@ -1108,20 +1109,36 @@ TRANSACTION(ttDIRECTED_OFFER_ACCEPT, 121, DirectedOfferAccept,
       .amendment = featureDirectedOffer,
       .privileges = Privilege::MayCreateMpt}),
     ({
-    {sfDirectedOfferID, SoeRequired},
-    {sfQuantity, SoeRequired, SoeMptSupported},
+    {sfDirectedOfferID, SoeOptional},
+    {sfQuantity, SoeOptional, SoeMptSupported},
     {sfSendMax, SoeOptional, SoeMptSupported},
+    {sfDirectedOfferCounterID, SoeOptional},
 }))
 
-/** This transaction type cancels a DirectedOffer and returns the locked asset
-    to the seller. */
+/** This transaction type cancels a DirectedOffer or a DirectedOfferCounter
+    and returns what it locked to its owner. */
 #if TRANSACTION_INCLUDE
 #   include <xrpl/tx/transactors/dex/DirectedOfferCancel.h>
 #endif
 TRANSACTION(ttDIRECTED_OFFER_CANCEL, 122, DirectedOfferCancel,
     ({.delegable = Delegation::Delegable, .amendment = featureDirectedOffer}),
     ({
+    {sfDirectedOfferID, SoeOptional},
+    {sfDirectedOfferCounterID, SoeOptional},
+}))
+
+/** This transaction type locks a buyer's payment as a bid against a
+    DirectedOffer, for a quantity at a total price the seller may take. */
+#if TRANSACTION_INCLUDE
+#   include <xrpl/tx/transactors/dex/DirectedOfferCounterCreate.h>
+#endif
+TRANSACTION(ttDIRECTED_OFFER_COUNTER_CREATE, 123, DirectedOfferCounterCreate,
+    ({.delegable = Delegation::Delegable, .amendment = featureDirectedOffer}),
+    ({
     {sfDirectedOfferID, SoeRequired},
+    {sfQuantity, SoeRequired, SoeMptSupported},
+    {sfAmount, SoeRequired, SoeMptSupported},
+    {sfExpiration, SoeOptional},
 }))
 
 /** This system-generated transaction type is used to update the status of the various amendments.

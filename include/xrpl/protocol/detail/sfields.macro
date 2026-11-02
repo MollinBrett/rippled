@@ -222,6 +222,7 @@ TYPED_SFIELD(sfBlindingFactor,           UINT256,   40)
 TYPED_SFIELD(sfObjectID,                 UINT256,   41)
 TYPED_SFIELD(sfProposalID,               UINT256,   42)
 TYPED_SFIELD(sfDirectedOfferID,          UINT256,   43)
+TYPED_SFIELD(sfDirectedOfferCounterID,   UINT256,   44)
 
 // number (common)
 TYPED_SFIELD(sfNumber,                   NUMBER,     1)

@@ -48,26 +48,56 @@ public:
     // Transaction-specific field getters
 
     /**
-     * @brief Get sfDirectedOfferID (SoeRequired)
-     * @return The field value.
+     * @brief Get sfDirectedOfferID (SoeOptional)
+     * @return The field value, or std::nullopt if not present.
      */
     [[nodiscard]]
-    SF_UINT256::type::value_type
+    protocol_autogen::Optional<SF_UINT256::type::value_type>
     getDirectedOfferID() const
     {
-        return this->tx_->at(sfDirectedOfferID);
+        if (hasDirectedOfferID())
+        {
+            return this->tx_->at(sfDirectedOfferID);
+        }
+        return std::nullopt;
     }
 
     /**
-     * @brief Get sfQuantity (SoeRequired)
-     * @note This field supports MPT (Multi-Purpose Token) amounts.
-     * @return The field value.
+     * @brief Check if sfDirectedOfferID is present.
+     * @return True if the field is present, false otherwise.
      */
     [[nodiscard]]
-    SF_AMOUNT::type::value_type
+    bool
+    hasDirectedOfferID() const
+    {
+        return this->tx_->isFieldPresent(sfDirectedOfferID);
+    }
+
+    /**
+     * @brief Get sfQuantity (SoeOptional)
+     * @note This field supports MPT (Multi-Purpose Token) amounts.
+     * @return The field value, or std::nullopt if not present.
+     */
+    [[nodiscard]]
+    protocol_autogen::Optional<SF_AMOUNT::type::value_type>
     getQuantity() const
     {
-        return this->tx_->at(sfQuantity);
+        if (hasQuantity())
+        {
+            return this->tx_->at(sfQuantity);
+        }
+        return std::nullopt;
+    }
+
+    /**
+     * @brief Check if sfQuantity is present.
+     * @return True if the field is present, false otherwise.
+     */
+    [[nodiscard]]
+    bool
+    hasQuantity() const
+    {
+        return this->tx_->isFieldPresent(sfQuantity);
     }
 
     /**
@@ -96,6 +126,32 @@ public:
     {
         return this->tx_->isFieldPresent(sfSendMax);
     }
+
+    /**
+     * @brief Get sfDirectedOfferCounterID (SoeOptional)
+     * @return The field value, or std::nullopt if not present.
+     */
+    [[nodiscard]]
+    protocol_autogen::Optional<SF_UINT256::type::value_type>
+    getDirectedOfferCounterID() const
+    {
+        if (hasDirectedOfferCounterID())
+        {
+            return this->tx_->at(sfDirectedOfferCounterID);
+        }
+        return std::nullopt;
+    }
+
+    /**
+     * @brief Check if sfDirectedOfferCounterID is present.
+     * @return True if the field is present, false otherwise.
+     */
+    [[nodiscard]]
+    bool
+    hasDirectedOfferCounterID() const
+    {
+        return this->tx_->isFieldPresent(sfDirectedOfferCounterID);
+    }
 };
 
 /**
@@ -111,19 +167,15 @@ public:
     /**
      * @brief Construct a new DirectedOfferAcceptBuilder with required fields.
      * @param account The account initiating the transaction.
-     * @param directedOfferID The sfDirectedOfferID field value.
-     * @param quantity The sfQuantity field value.
      * @param sequence Optional sequence number for the transaction.
      * @param fee Optional fee for the transaction.
      */
     DirectedOfferAcceptBuilder(SF_ACCOUNT::type::value_type account,
-                     std::decay_t<typename SF_UINT256::type::value_type> const& directedOfferID,                     std::decay_t<typename SF_AMOUNT::type::value_type> const& quantity,                    std::optional<SF_UINT32::type::value_type> sequence = std::nullopt,
+                    std::optional<SF_UINT32::type::value_type> sequence = std::nullopt,
                     std::optional<SF_AMOUNT::type::value_type> fee = std::nullopt
 )
         : TransactionBuilderBase<DirectedOfferAcceptBuilder>(ttDIRECTED_OFFER_ACCEPT, account, sequence, fee)
     {
-        setDirectedOfferID(directedOfferID);
-        setQuantity(quantity);
     }
 
     /**
@@ -145,7 +197,7 @@ public:
      */
 
     /**
-     * @brief Set sfDirectedOfferID (SoeRequired)
+     * @brief Set sfDirectedOfferID (SoeOptional)
      * @return Reference to this builder for method chaining.
      */
     DirectedOfferAcceptBuilder&
@@ -156,7 +208,7 @@ public:
     }
 
     /**
-     * @brief Set sfQuantity (SoeRequired)
+     * @brief Set sfQuantity (SoeOptional)
      * @note This field supports MPT (Multi-Purpose Token) amounts.
      * @return Reference to this builder for method chaining.
      */
@@ -176,6 +228,17 @@ public:
     setSendMax(std::decay_t<typename SF_AMOUNT::type::value_type> const& value)
     {
         object_[sfSendMax] = value;
+        return *this;
+    }
+
+    /**
+     * @brief Set sfDirectedOfferCounterID (SoeOptional)
+     * @return Reference to this builder for method chaining.
+     */
+    DirectedOfferAcceptBuilder&
+    setDirectedOfferCounterID(std::decay_t<typename SF_UINT256::type::value_type> const& value)
+    {
+        object_[sfDirectedOfferCounterID] = value;
         return *this;
     }
 

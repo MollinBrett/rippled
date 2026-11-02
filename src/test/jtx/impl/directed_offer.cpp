@@ -61,10 +61,52 @@ cancel(jtx::Account const& account, UInt256 const& offerID)
     return jv;
 }
 
+json::Value
+counter(
+    jtx::Account const& buyer,
+    UInt256 const& offerID,
+    STAmount const& quantity,
+    STAmount const& amount)
+{
+    json::Value jv;
+    jv[sfTransactionType.jsonName] = "DirectedOfferCounterCreate";
+    jv[sfAccount.jsonName] = buyer.human();
+    jv[sfDirectedOfferID.jsonName] = to_string(offerID);
+    jv[sfQuantity.jsonName] = quantity.getJson(JsonOptions::Values::None);
+    jv[sfAmount.jsonName] = amount.getJson(JsonOptions::Values::None);
+    return jv;
+}
+
+json::Value
+takeCounter(jtx::Account const& seller, UInt256 const& counterID)
+{
+    json::Value jv;
+    jv[sfTransactionType.jsonName] = "DirectedOfferAccept";
+    jv[sfAccount.jsonName] = seller.human();
+    jv[sfDirectedOfferCounterID.jsonName] = to_string(counterID);
+    return jv;
+}
+
+json::Value
+cancelCounter(jtx::Account const& account, UInt256 const& counterID)
+{
+    json::Value jv;
+    jv[sfTransactionType.jsonName] = "DirectedOfferCancel";
+    jv[sfAccount.jsonName] = account.human();
+    jv[sfDirectedOfferCounterID.jsonName] = to_string(counterID);
+    return jv;
+}
+
 Keylet
 keylet(jtx::Account const& seller, std::uint32_t seq)
 {
     return keylet::directedOffer(seller.id(), SeqProxy::rawSequence(seq));
+}
+
+Keylet
+counterKeylet(jtx::Account const& buyer, std::uint32_t seq)
+{
+    return keylet::directedOfferCounter(buyer.id(), SeqProxy::rawSequence(seq));
 }
 
 void

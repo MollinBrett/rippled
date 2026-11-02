@@ -62,6 +62,7 @@ isReserveSponsorAllowed(TxType txType)
         ttDIRECTED_OFFER_CREATE,
         ttDIRECTED_OFFER_ACCEPT,
         ttDIRECTED_OFFER_CANCEL,
+        ttDIRECTED_OFFER_COUNTER_CREATE,
     };
     return kReserveSponsorAllowed.contains(txType);
 }
@@ -231,6 +232,7 @@ isLedgerEntryOwner(ReadView const& view, SLE const& sle, AccountID const& accoun
         case ltDELEGATE:
         case ltDEPOSIT_PREAUTH:
         case ltDIRECTED_OFFER:
+        case ltDIRECTED_OFFER_COUNTER:
             return sle.getAccountID(sfAccount) == account;
         case ltMPTOKEN_ISSUANCE:
             return sle.getAccountID(sfIssuer) == account;
@@ -289,6 +291,7 @@ isLedgerEntrySupportedBySponsorship(SLE const& sle)
         case ltRIPPLE_STATE:
         case ltTRANSACTION_PROPOSAL:
         case ltDIRECTED_OFFER:
+        case ltDIRECTED_OFFER_COUNTER:
             return true;
         default:
             return false;

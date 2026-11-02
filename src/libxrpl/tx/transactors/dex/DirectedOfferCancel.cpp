@@ -6,9 +6,11 @@
 #include <xrpl/ledger/ApplyView.h>
 #include <xrpl/ledger/ReadView.h>
 #include <xrpl/ledger/View.h>
+#include <xrpl/ledger/entries/DirectedOfferCounterEntry.h>
 #include <xrpl/ledger/entries/DirectedOfferEntry.h>
 #include <xrpl/ledger/helpers/DirectedOfferHelpers.h>
 #include <xrpl/protocol/AccountID.h>
+#include <xrpl/protocol/Indexes.h>
 #include <xrpl/protocol/SField.h>
 #include <xrpl/protocol/STTx.h>
 #include <xrpl/protocol/TER.h>
@@ -26,9 +28,20 @@ DirectedOfferCancel::checkExtraFeatures(PreflightContext const& ctx)
 NotTEC
 DirectedOfferCancel::preflight(PreflightContext const& ctx)
 {
-    if (ctx.tx[sfDirectedOfferID] == beast::kZero)
+    // Exactly one of an offer and a bid, as NFTokenCancelOffer cancels offers
+    // of either kind.
+    auto const offerID = ctx.tx[~sfDirectedOfferID];
+    auto const counterID = ctx.tx[~sfDirectedOfferCounterID];
+    if (static_cast<bool>(offerID) == static_cast<bool>(counterID))
     {
-        JLOG(ctx.j.debug()) << "Malformed transaction: zero DirectedOfferID.";
+        JLOG(ctx.j.debug()) << "Malformed transaction: needs exactly one of DirectedOfferID "
+                               "and DirectedOfferCounterID.";
+        return temMALFORMED;
+    }
+
+    if ((offerID ? *offerID : *counterID) == beast::kZero)
+    {
+        JLOG(ctx.j.debug()) << "Malformed transaction: zero ID.";
         return temMALFORMED;
     }
 
@@ -38,7 +51,31 @@ DirectedOfferCancel::preflight(PreflightContext const& ctx)
 TER
 DirectedOfferCancel::preclaim(PreclaimContext const& ctx)
 {
-    DirectedOfferEntryR const offer(ctx.tx[sfDirectedOfferID], ctx.view);
+    AccountID const account = ctx.tx[sfAccount];
+
+    if (auto const counterID = ctx.tx[~sfDirectedOfferCounterID])
+    {
+        DirectedOfferCounterEntryR const counter(*counterID, ctx.view);
+        if (!counter)
+        {
+            JLOG(ctx.j.debug()) << "DirectedOfferCounter does not exist.";
+            return tecNO_ENTRY;
+        }
+
+        // The buyer withdraws and the seller declines at any time; anyone
+        // clears a bid that has expired or whose offer is gone.
+        if (account != counter->at(sfAccount) && account != counter->at(sfDestination) &&
+            !hasExpired(ctx.view, counter->at(~sfExpiration)) &&
+            ctx.view.exists(keylet::directedOffer(counter->at(sfDirectedOfferID))))
+        {
+            JLOG(ctx.j.debug()) << "Only the buyer or the seller may cancel a live bid.";
+            return tecNO_PERMISSION;
+        }
+
+        return tesSUCCESS;
+    }
+
+    DirectedOfferEntryR const offer(*ctx.tx[~sfDirectedOfferID], ctx.view);
     if (!offer)
     {
         JLOG(ctx.j.debug()) << "DirectedOffer does not exist.";
@@ -47,8 +84,7 @@ DirectedOfferCancel::preclaim(PreclaimContext const& ctx)
 
     // Before it expires only the seller may cancel; afterwards anyone may,
     // so an expired offer never strands the seller's asset.
-    if (ctx.tx[sfAccount] != offer->at(sfAccount) &&
-        !hasExpired(ctx.view, offer->at(~sfExpiration)))
+    if (account != offer->at(sfAccount) && !hasExpired(ctx.view, offer->at(~sfExpiration)))
     {
         JLOG(ctx.j.debug()) << "Only the seller may cancel an offer that has not expired.";
         return tecNO_PERMISSION;
@@ -60,7 +96,28 @@ DirectedOfferCancel::preclaim(PreclaimContext const& ctx)
 TER
 DirectedOfferCancel::doApply()
 {
-    DirectedOfferEntryW offer(ctx_.tx[sfDirectedOfferID], view(), j_);
+    if (auto const counterID = ctx_.tx[~sfDirectedOfferCounterID])
+    {
+        DirectedOfferCounterEntryW counter(*counterID, view(), j_);
+        if (!counter)
+        {
+            // LCOV_EXCL_START
+            UNREACHABLE("xrpl::DirectedOfferCancel::doApply : preclaim found the bid");
+            return tecINTERNAL;
+            // LCOV_EXCL_STOP
+        }
+
+        AccountID const buyer = counter->at(sfAccount);
+        return closeDirectedOfferCounter(
+            ctx_.getApplyViewContext(),
+            counter.mutableRawSle(),
+            buyer,
+            preFeeBalance_,
+            buyer == accountID_,
+            j_);
+    }
+
+    DirectedOfferEntryW offer(*ctx_.tx[~sfDirectedOfferID], view(), j_);
     if (!offer)
     {
         // LCOV_EXCL_START

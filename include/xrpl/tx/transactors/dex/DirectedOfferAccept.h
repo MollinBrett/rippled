@@ -1,5 +1,6 @@
 #pragma once
 
+#include <xrpl/basics/base_uint.h>
 #include <xrpl/beast/utility/Journal.h>
 #include <xrpl/ledger/ReadView.h>
 #include <xrpl/protocol/STTx.h>
@@ -12,6 +13,10 @@ namespace xrpl {
 
 class DirectedOfferAccept : public Transactor
 {
+private:
+    [[nodiscard]] TER
+    takeCounter(UInt256 const& counterID);
+
 public:
     static constexpr auto kConsequencesFactory = ConsequencesFactoryType::Normal;
 

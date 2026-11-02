@@ -76,6 +76,9 @@ class DirectedOffer_test : public beast::unit_test::Suite
             Ter(temDISABLED));
         env(accept(s.bob, uint256{1}, s.usd(1)), Ter(temDISABLED));
         env(cancel(s.alice, uint256{1}), Ter(temDISABLED));
+        env(counter(s.bob, uint256{1}, s.usd(1), XRP(1)), Ter(temDISABLED));
+        env(takeCounter(s.alice, uint256{1}), Ter(temDISABLED));
+        env(cancelCounter(s.bob, uint256{1}), Ter(temDISABLED));
         env.close();
         BEAST_EXPECTS(env.ownerCount(s.alice) == 1, std::to_string(env.ownerCount(s.alice)));
     }
@@ -645,6 +648,190 @@ class DirectedOffer_test : public beast::unit_test::Suite
 
 public:
     void
+    testCounterTaken(FeatureBitset features)
+    {
+        testcase("Seller takes a bid, MPT sold for an IOU");
+        using namespace jtx;
+        using namespace directed_offer;
+
+        Env env{*this, features};
+        Account const gw{"gw"};
+        Account const alice{"alice"};
+        Account const bob{"bob"};
+        Account const carol{"carol"};
+
+        MPTTester mptGw(env, gw, {.holders = {alice, bob, carol}});
+        mptGw.create({.ownerCount = 1, .flags = tfMPTCanEscrow | tfMPTCanTransfer});
+        mptGw.authorize({.account = alice});
+        mptGw.authorize({.account = bob});
+        mptGw.authorize({.account = carol});
+        auto const mpt = mptGw["MPT"];
+        env(pay(gw, alice, mpt(1'000)));
+
+        auto const usd = gw["USD"];
+        env(fset(gw, asfAllowTrustLineLocking));
+        env.trust(usd(10'000), alice, bob, carol);
+        env.close();
+        env(pay(gw, bob, usd(500)));
+        env(pay(gw, carol, usd(500)));
+        env.close();
+
+        auto const offerSeq = env.seq(alice);
+        env(create(alice, mpt(100), usd.issue(), {{mpt(1), usd(2)}}), Counterparties({bob}));
+        env.close();
+        auto const offerID = keylet(alice, offerSeq).key;
+
+        // Only a named buyer may bid, and the seller cannot bid on itself.
+        env(counter(carol, offerID, mpt(60), usd(80)), Ter(tecNO_PERMISSION));
+        env(counter(alice, offerID, mpt(60), usd(80)), Ter(tecNO_PERMISSION));
+
+        // bob bids 80 USD for 60, below the 120 the tier asks.
+        auto const bobOwners = env.ownerCount(bob);
+        auto const counterSeq = env.seq(bob);
+        env(counter(bob, offerID, mpt(60), usd(80)));
+        env.close();
+        auto const counterID = counterKeylet(bob, counterSeq).key;
+        BEAST_EXPECT(env.le(counterKeylet(bob, counterSeq)));
+        env.require(Balance(bob, usd(420)));
+        BEAST_EXPECTS(env.ownerCount(bob) == bobOwners + 1, std::to_string(env.ownerCount(bob)));
+
+        // Only the seller takes it, by its ID alone.
+        env(takeCounter(bob, counterID), Ter(tecNO_PERMISSION));
+        auto withQuantity = takeCounter(alice, counterID);
+        withQuantity[sfQuantity.jsonName] = mpt(60).value().getJson(JsonOptions::Values::None);
+        env(withQuantity, Ter(temMALFORMED));
+
+        env(takeCounter(alice, counterID));
+        env.close();
+        BEAST_EXPECT(!env.le(counterKeylet(bob, counterSeq)));
+        BEAST_EXPECTS(mptGw.getBalance(bob) == 60, std::to_string(mptGw.getBalance(bob)));
+        env.require(Balance(bob, usd(420)));
+        env.require(Balance(alice, usd(80)));
+        BEAST_EXPECTS(env.ownerCount(bob) == bobOwners, std::to_string(env.ownerCount(bob)));
+
+        auto const offer = env.le(keylet(alice, offerSeq));
+        if (!BEAST_EXPECT(offer))
+            return;
+        BEAST_EXPECTS(offer->at(sfAmount) == mpt(40), offer->at(sfAmount).getFullText());
+
+        // A bid for everything left closes the offer when taken.
+        auto const lastSeq = env.seq(bob);
+        env(counter(bob, offerID, mpt(40), usd(50)));
+        env.close();
+        env(takeCounter(alice, counterKeylet(bob, lastSeq).key));
+        env.close();
+        BEAST_EXPECT(!env.le(keylet(alice, offerSeq)));
+        BEAST_EXPECTS(mptGw.getBalance(bob) == 100, std::to_string(mptGw.getBalance(bob)));
+        BEAST_EXPECTS(mptGw.getBalance(alice) == 900, std::to_string(mptGw.getBalance(alice)));
+        env.require(Balance(alice, usd(130)));
+    }
+
+    void
+    testCounterCancelled(FeatureBitset features)
+    {
+        testcase("Bids withdrawn, declined, expired and stale");
+        using namespace jtx;
+        using namespace directed_offer;
+        using namespace std::chrono_literals;
+
+        Env env{*this, features};
+        IouSetup const s{env};
+        XRPAmount const fee = env.current()->fees().base;
+
+        auto const offerSeq = env.seq(s.alice);
+        env(create(s.alice, s.usd(10), xrpIssue(), {{s.usd(1), XRP(10)}}), Counterparties({s.bob}));
+        env.close();
+        auto const offerID = keylet(s.alice, offerSeq).key;
+
+        // The bid locks bob's XRP; the seller declining it returns the XRP.
+        XRPAmount const bobXrp = xrpBalance(env, s.bob);
+        auto seq = env.seq(s.bob);
+        env(counter(s.bob, offerID, s.usd(5), XRP(30)));
+        env.close();
+        BEAST_EXPECTS(
+            xrpBalance(env, s.bob) == bobXrp - XRP(30) - fee, to_string(xrpBalance(env, s.bob)));
+
+        env(cancelCounter(s.dave, counterKeylet(s.bob, seq).key), Ter(tecNO_PERMISSION));
+        env(cancelCounter(s.alice, counterKeylet(s.bob, seq).key));
+        env.close();
+        BEAST_EXPECT(!env.le(counterKeylet(s.bob, seq)));
+        BEAST_EXPECTS(xrpBalance(env, s.bob) == bobXrp - fee, to_string(xrpBalance(env, s.bob)));
+
+        // The buyer withdraws its own bid.
+        seq = env.seq(s.bob);
+        env(counter(s.bob, offerID, s.usd(5), XRP(30)));
+        env(cancelCounter(s.bob, counterKeylet(s.bob, seq).key));
+        env.close();
+        BEAST_EXPECT(!env.le(counterKeylet(s.bob, seq)));
+
+        // An expired bid cannot be taken, and anyone may clear it.
+        seq = env.seq(s.bob);
+        env(counter(s.bob, offerID, s.usd(5), XRP(30)), Expires(env.now() + 20s));
+        env.close(30s);
+        env(takeCounter(s.alice, counterKeylet(s.bob, seq).key), Ter(tecEXPIRED));
+        env(cancelCounter(s.dave, counterKeylet(s.bob, seq).key));
+        env.close();
+        BEAST_EXPECT(!env.le(counterKeylet(s.bob, seq)));
+
+        // A bid outlives its offer; it cannot be taken, and anyone may clear it.
+        seq = env.seq(s.bob);
+        env(counter(s.bob, offerID, s.usd(5), XRP(30)));
+        env.close();
+        env(cancel(s.alice, offerID));
+        env.close();
+        env(takeCounter(s.alice, counterKeylet(s.bob, seq).key), Ter(tecNO_ENTRY));
+        env(cancelCounter(s.dave, counterKeylet(s.bob, seq).key));
+        env.close();
+        BEAST_EXPECT(!env.le(counterKeylet(s.bob, seq)));
+        BEAST_EXPECTS(env.ownerCount(s.bob) == 1, std::to_string(env.ownerCount(s.bob)));
+    }
+
+    void
+    testCounterMalformed(FeatureBitset features)
+    {
+        testcase("Malformed and refused bids");
+        using namespace jtx;
+        using namespace directed_offer;
+
+        Env env{*this, features};
+        IouSetup const s{env};
+
+        auto const offerSeq = env.seq(s.alice);
+        env(create(s.alice, s.usd(10), xrpIssue(), {{s.usd(2), XRP(10)}}), Counterparties({s.bob}));
+        env.close();
+        auto const offerID = keylet(s.alice, offerSeq).key;
+
+        env(counter(s.bob, offerID, s.usd(5), XRP(0)), Ter(temBAD_AMOUNT));
+        env(counter(s.bob, offerID, s.usd(0), XRP(1)), Ter(temBAD_AMOUNT));
+        env(counter(s.bob, offerID, s.usd(11), XRP(1)), Ter(tecINSUFFICIENT_FUNDS));
+        env(counter(s.bob, offerID, XRP(5), XRP(1)), Ter(tecWRONG_ASSET));
+        env(counter(s.bob, offerID, s.usd(5), s.usd(1)), Ter(tecWRONG_ASSET));
+        env(counter(s.bob, uint256{1}, s.usd(5), XRP(1)), Ter(tecNO_ENTRY));
+
+        // A bid may be for less than the smallest tier.
+        auto const seq = env.seq(s.bob);
+        env(counter(s.bob, offerID, s.usd(1), XRP(5)));
+        env.close();
+        auto const counterID = counterKeylet(s.bob, seq).key;
+
+        // Accept and Cancel take exactly one of the two IDs.
+        auto both = takeCounter(s.alice, counterID);
+        both[sfDirectedOfferID.jsonName] = to_string(offerID);
+        env(both, Ter(temMALFORMED));
+        auto cancelBoth = cancelCounter(s.alice, counterID);
+        cancelBoth[sfDirectedOfferID.jsonName] = to_string(offerID);
+        env(cancelBoth, Ter(temMALFORMED));
+        json::Value neither;
+        neither[sfTransactionType.jsonName] = "DirectedOfferCancel";
+        neither[sfAccount.jsonName] = s.alice.human();
+        env(neither, Ter(temMALFORMED));
+
+        env(takeCounter(s.alice, counterID));
+        env.close();
+        env.require(Balance(s.bob, s.usd(1)));
+    }
+
+    void
     run() override
     {
         using namespace jtx;
@@ -665,6 +852,9 @@ public:
         testDelegation(all);
         testBatch(all);
         testSponsorship(all);
+        testCounterTaken(all);
+        testCounterCancelled(all);
+        testCounterMalformed(all);
     }
 };
 

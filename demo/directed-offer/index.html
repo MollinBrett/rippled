@@ -43,6 +43,7 @@
   input[type=number] { width: 90px; }
   label { display: inline-flex; gap: 6px; align-items: center; }
   .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 8px; }
+  .bid { border-left: 3px solid var(--accent); padding-left: 8px; }
   .chip { display: inline-block; background: var(--chip); border-radius: 10px; padding: 1px 8px; margin: 1px 2px; font-size: 12px; }
   .ok { color: var(--ok); } .bad { color: var(--bad); } .warn { color: var(--warn); }
   .offer { border: 1px solid var(--line); border-radius: 8px; padding: 10px; margin-bottom: 10px; }
@@ -363,17 +364,41 @@ function quote(offer, qty) {
 }
 
 async function renderOffers() {
-  const offers = [];
+  const offers = [], bids = new Map();
   for (const a of Object.values(state.accounts)) {
     const r = await rpc("account_objects", { account: a.address, type: "directed_offer" });
     offers.push(...(r.account_objects || []));
+    // A bid is linked from both the buyer's and the seller's directory.
+    const c = await rpc("account_objects", { account: a.address, type: "directed_offer_counter" });
+    for (const b of c.account_objects || []) bids.set(b.index, b);
   }
-  if (!offers.length) return $("offers").replaceChildren("No offers.");
+  const live = new Set(offers.map((o) => o.index));
+  const stale = [...bids.values()].filter((b) => !live.has(b.DirectedOfferID));
+  if (!offers.length && !stale.length) return $("offers").replaceChildren("No offers.");
   const close = (await rpc("ledger", { ledger_index: "validated" })).ledger.close_time;
-  $("offers").replaceChildren(...offers.map((o) => renderOffer(o, close)));
+  $("offers").replaceChildren(
+    ...offers.map((o) => renderOffer(o, close, [...bids.values()].filter((b) => b.DirectedOfferID === o.index))),
+    ...(stale.length ? [el("div", { class: "offer" },
+      el("div", { class: "offer-head" }, el("b", {}, "Bids on closed offers"), el("span", { class: "muted" }, "anyone may clear these")),
+      ...stale.map((b) => renderBid(b, false)))] : []));
 }
 
-function renderOffer(o, closeTime) {
+function renderBid(b, offerLive) {
+  const buyer = state.accounts[nameOf(b.Account)], seller = state.accounts[nameOf(b.Destination)];
+  const total = typeof b.Amount === "string" ? fmt(Number(b.Amount) / 1e6) + " XRP" : fmt(b.Amount.value) + " " + assetOf(b.Amount);
+  const act = (who, type, label, text) => el("button", { class: type === "DirectedOfferAccept" ? "primary" : "", onclick: async () => {
+    await submit({ TransactionType: type, Account: who.address, DirectedOfferCounterID: b.index }, who, label);
+    refresh();
+  } }, text);
+  return el("div", { class: "row bid" },
+    el("span", {}, el("b", {}, buyer.name), ` bids ${total} for ${fmt(valueOf(b.Quantity))} ${assetOf(b.Quantity)}`),
+    offerLive ? act(seller, "DirectedOfferAccept", `${seller.name} takes ${buyer.name}'s bid`, "Take") : "",
+    act(seller, "DirectedOfferCancel", `${seller.name} declines ${buyer.name}'s bid`, offerLive ? "Decline" : "Clear"),
+    act(buyer, "DirectedOfferCancel", `${buyer.name} withdraws the bid`, "Withdraw"),
+    rawDetails("Raw", b));
+}
+
+function renderOffer(o, closeTime, bids) {
   const sold = assetOf(o.Amount), left = valueOf(o.Amount);
   const pay = o.PaymentAsset.mpt_issuance_id ? "BOND" : o.PaymentAsset.currency;
   const buyers = o.Counterparties ? o.Counterparties.map((c) => nameOf(c.CounterpartyEntry.Account)) : [];
@@ -396,6 +421,14 @@ function renderOffer(o, closeTime) {
                  b, `${b.name} buys ${qty.value} ${sold} from ${nameOf(o.Account)}`);
     refresh();
   } }, "Accept");
+  const bidTotal = el("input", { type: "number", value: "", min: "0", step: "any", placeholder: "total" });
+  const bidBtn = el("button", { onclick: async () => {
+    const b = state.accounts[buyer.value];
+    await submit({ TransactionType: "DirectedOfferCounterCreate", Account: b.address, DirectedOfferID: o.index,
+                   Quantity: amount(sold, qty.value), Amount: amount(pay, bidTotal.value) },
+                 b, `${b.name} bids ${bidTotal.value} ${pay} for ${qty.value} ${sold}`);
+    refresh();
+  } }, "Bid");
   const canceller = el("select", {}, ...Object.keys(state.accounts).filter((n) => n !== "gw").map((n) => el("option", n === nameOf(o.Account) ? { selected: "" } : {}, n)));
   const cancelBtn = el("button", { onclick: async () => {
     const a = state.accounts[canceller.value];
@@ -411,7 +444,9 @@ function renderOffer(o, closeTime) {
     el("div", { class: "row" }, el("span", { class: "muted" }, "Tiers:"), ...tierText),
     el("div", { class: "row" }, el("span", { class: "muted" }, "Buyers:"),
       ...(buyers.length ? buyers.map((b) => el("span", { class: "chip" }, b)) : [el("span", { class: "chip" }, "domain " + (o.DomainID || "").slice(0, 8))])),
-    el("div", { class: "row" }, buyer, qty, el("span", {}, sold), price, acceptBtn, el("span", { class: "muted" }, "|"), canceller, cancelBtn),
+    el("div", { class: "row" }, buyer, qty, el("span", {}, sold), price, acceptBtn, el("span", { class: "muted" }, "or bid"), bidTotal, el("span", {}, pay), bidBtn),
+    el("div", { class: "row" }, canceller, cancelBtn),
+    ...bids.map((b) => renderBid(b, true)),
     rawDetails("Raw ledger entry", o));
 }
 

@@ -650,5 +650,26 @@ LEDGER_ENTRY(ltDIRECTED_OFFER, 0x00a0, DirectedOffer, directed_offer, ({
     {sfPreviousTxnLgrSeq,    SoeRequired},
 }))
 
+/** A ledger object holding a buyer's payment, locked as a bid against a
+    DirectedOffer for a quantity at a total price the seller may take.
+
+    \sa keylet::directedOfferCounter
+ */
+LEDGER_ENTRY(ltDIRECTED_OFFER_COUNTER, 0x00a1, DirectedOfferCounter, directed_offer_counter, ({
+    {sfAccount,              SoeRequired},
+    {sfDestination,          SoeRequired},
+    {sfSequence,             SoeRequired},
+    {sfDirectedOfferID,      SoeRequired},
+    {sfQuantity,             SoeRequired},
+    {sfAmount,               SoeRequired},
+    {sfExpiration,           SoeOptional},
+    {sfTransferRate,         SoeOptional},
+    {sfOwnerNode,            SoeRequired},
+    {sfDestinationNode,      SoeRequired},
+    {sfIssuerNode,           SoeOptional},
+    {sfPreviousTxnID,        SoeRequired},
+    {sfPreviousTxnLgrSeq,    SoeRequired},
+}))
+
 #undef EXPAND
 #undef LEDGER_ENTRY_DUPLICATE
