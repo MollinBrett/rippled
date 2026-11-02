@@ -153,6 +153,7 @@ XRPNotCreated::visitEntry(bool isDelete, SLE::ConstRef before, SLE::ConstRef aft
                 drops_ -= ((*before)[sfAmount] - (*before)[sfBalance]).xrp().drops();
                 break;
             case ltESCROW:
+            case ltDIRECTED_OFFER:
                 if (isXRP((*before)[sfAmount]))
                     drops_ -= (*before)[sfAmount].xrp().drops();
                 break;
@@ -187,6 +188,7 @@ XRPNotCreated::visitEntry(bool isDelete, SLE::ConstRef before, SLE::ConstRef aft
                 drops_ += ((*after)[sfAmount] - (*after)[sfBalance]).xrp().drops();
             break;
         case ltESCROW:
+        case ltDIRECTED_OFFER:
             if (!isDelete && isXRP((*after)[sfAmount]))
                 drops_ += (*after)[sfAmount].xrp().drops();
             break;

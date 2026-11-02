@@ -221,6 +221,7 @@ TYPED_SFIELD(sfReferenceHolding,         UINT256,   39)
 TYPED_SFIELD(sfBlindingFactor,           UINT256,   40)
 TYPED_SFIELD(sfObjectID,                 UINT256,   41)
 TYPED_SFIELD(sfProposalID,               UINT256,   42)
+TYPED_SFIELD(sfDirectedOfferID,          UINT256,   43)
 
 // number (common)
 TYPED_SFIELD(sfNumber,                   NUMBER,     1)
@@ -284,6 +285,9 @@ TYPED_SFIELD(sfLPTokenBalance,           AMOUNT,    31)
 TYPED_SFIELD(sfFeeAmount,                AMOUNT,    32)
 TYPED_SFIELD(sfMaxFee,                   AMOUNT,    33)
 TYPED_SFIELD(sfFeeAmountDelta,           AMOUNT,    34)
+TYPED_SFIELD(sfQuantity,                 AMOUNT,    35)
+TYPED_SFIELD(sfMinQuantity,              AMOUNT,    36)
+TYPED_SFIELD(sfUnitPrice,                AMOUNT,    37)
 
 // variable length (common)
 TYPED_SFIELD(sfPublicKey,                VL,         1)
@@ -379,6 +383,7 @@ TYPED_SFIELD(sfQuoteAsset,               CURRENCY,   2)
 // 1 to 2 reserved
 TYPED_SFIELD(sfAsset,                    ISSUE,      3)
 TYPED_SFIELD(sfAsset2,                   ISSUE,      4)
+TYPED_SFIELD(sfPaymentAsset,             ISSUE,      5)
 
 // inner object
 // OBJECT/1 is reserved for end of object
@@ -415,6 +420,8 @@ UNTYPED_SFIELD(sfBook,                   OBJECT,    36)
 UNTYPED_SFIELD(sfCounterpartySignature,  OBJECT,    37, SField::kSmdDefault, SField::kNotSigning)
 UNTYPED_SFIELD(sfSponsorSignature,       OBJECT,    38, SField::kSmdDefault, SField::kNotSigning)
 UNTYPED_SFIELD(sfProposedTransaction,    OBJECT,    39)
+UNTYPED_SFIELD(sfPriceTier,              OBJECT,    40)
+UNTYPED_SFIELD(sfCounterpartyEntry,      OBJECT,    41)
 
 // array of objects (common)
 // ARRAY/1 is reserved for end of array
@@ -444,3 +451,5 @@ UNTYPED_SFIELD(sfAcceptedCredentials,    ARRAY,     28)
 UNTYPED_SFIELD(sfPermissions,            ARRAY,     29)
 UNTYPED_SFIELD(sfRawTransactions,        ARRAY,     30)
 UNTYPED_SFIELD(sfBatchSigners,           ARRAY,     31, SField::kSmdDefault, SField::kNotSigning)
+UNTYPED_SFIELD(sfPriceTiers,             ARRAY,     32)
+UNTYPED_SFIELD(sfCounterparties,         ARRAY,     33)

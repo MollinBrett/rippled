@@ -629,5 +629,26 @@ LEDGER_ENTRY(ltTRANSACTION_PROPOSAL, 0x0091, TransactionProposal, transaction_pr
     {sfOwnerNode,            SoeRequired},
 }))
 
+/** A ledger object holding a seller's locked asset, offered at tiered prices
+    to a named set of buyers or to the members of a permissioned domain.
+
+    \sa keylet::directedOffer
+ */
+LEDGER_ENTRY(ltDIRECTED_OFFER, 0x00a0, DirectedOffer, directed_offer, ({
+    {sfAccount,              SoeRequired},
+    {sfSequence,             SoeRequired},
+    {sfAmount,               SoeRequired},
+    {sfPaymentAsset,         SoeRequired},
+    {sfPriceTiers,           SoeRequired},
+    {sfCounterparties,       SoeOptional},
+    {sfDomainID,             SoeOptional},
+    {sfExpiration,           SoeOptional},
+    {sfTransferRate,         SoeOptional},
+    {sfOwnerNode,            SoeRequired},
+    {sfIssuerNode,           SoeOptional},
+    {sfPreviousTxnID,        SoeRequired},
+    {sfPreviousTxnLgrSeq,    SoeRequired},
+}))
+
 #undef EXPAND
 #undef LEDGER_ENTRY_DUPLICATE

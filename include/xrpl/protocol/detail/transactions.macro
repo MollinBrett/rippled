@@ -1082,6 +1082,48 @@ TRANSACTION(ttTRANSACTION_PROPOSAL_CANCEL, 94, TransactionProposalCancel,
     {sfProposalID, SoeRequired},
 }))
 
+/** This transaction type locks a seller's asset in a DirectedOffer, offered at
+    tiered prices to named buyers or to a permissioned domain's members. */
+#if TRANSACTION_INCLUDE
+#   include <xrpl/tx/transactors/dex/DirectedOfferCreate.h>
+#endif
+TRANSACTION(ttDIRECTED_OFFER_CREATE, 120, DirectedOfferCreate,
+    ({.delegable = Delegation::Delegable, .amendment = featureDirectedOffer}),
+    ({
+    {sfAmount, SoeRequired, SoeMptSupported},
+    {sfPaymentAsset, SoeRequired, SoeMptSupported},
+    {sfPriceTiers, SoeRequired},
+    {sfCounterparties, SoeOptional},
+    {sfDomainID, SoeOptional},
+    {sfExpiration, SoeOptional},
+}))
+
+/** This transaction type buys part or all of a DirectedOffer, settling the
+    payment and the delivery of the locked asset atomically. */
+#if TRANSACTION_INCLUDE
+#   include <xrpl/tx/transactors/dex/DirectedOfferAccept.h>
+#endif
+TRANSACTION(ttDIRECTED_OFFER_ACCEPT, 121, DirectedOfferAccept,
+    ({.delegable = Delegation::Delegable,
+      .amendment = featureDirectedOffer,
+      .privileges = Privilege::MayCreateMpt}),
+    ({
+    {sfDirectedOfferID, SoeRequired},
+    {sfQuantity, SoeRequired, SoeMptSupported},
+    {sfSendMax, SoeOptional, SoeMptSupported},
+}))
+
+/** This transaction type cancels a DirectedOffer and returns the locked asset
+    to the seller. */
+#if TRANSACTION_INCLUDE
+#   include <xrpl/tx/transactors/dex/DirectedOfferCancel.h>
+#endif
+TRANSACTION(ttDIRECTED_OFFER_CANCEL, 122, DirectedOfferCancel,
+    ({.delegable = Delegation::Delegable, .amendment = featureDirectedOffer}),
+    ({
+    {sfDirectedOfferID, SoeRequired},
+}))
+
 /** This system-generated transaction type is used to update the status of the various amendments.
 
     For details, see: https://xrpl.org/amendments.html

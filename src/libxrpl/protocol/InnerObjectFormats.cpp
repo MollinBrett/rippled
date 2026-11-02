@@ -71,6 +71,19 @@ InnerObjectFormats::InnerObjectFormats()
             {sfAccount, SoeRequired},
         });
 
+    add(sfPriceTier.jsonName,
+        sfPriceTier.getCode(),
+        {
+            {sfMinQuantity, SoeRequired, SoeMptSupported},
+            {sfUnitPrice, SoeRequired, SoeMptSupported},
+        });
+
+    add(sfCounterpartyEntry.jsonName,
+        sfCounterpartyEntry.getCode(),
+        {
+            {sfAccount, SoeRequired},
+        });
+
     add(sfPriceData.jsonName,
         sfPriceData.getCode(),
         {

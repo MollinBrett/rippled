@@ -13,6 +13,7 @@
 #include <xrpl/ledger/entries/DIDEntry.h>              // IWYU pragma: keep
 #include <xrpl/ledger/entries/DelegateEntry.h>         // IWYU pragma: keep
 #include <xrpl/ledger/entries/DepositPreauthEntry.h>   // IWYU pragma: keep
+#include <xrpl/ledger/entries/DirectedOfferEntry.h>    // IWYU pragma: keep
 #include <xrpl/ledger/entries/DirectoryNodeEntry.h>    // IWYU pragma: keep
 #include <xrpl/ledger/entries/EscrowEntry.h>           // IWYU pragma: keep
 #include <xrpl/ledger/entries/FeeSettingsEntry.h>      // IWYU pragma: keep

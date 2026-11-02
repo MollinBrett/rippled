@@ -3000,7 +3000,9 @@ class Delegate_test : public beast::unit_test::Suite
         // DO NOT modify expectedDelegableCount unless all scenarios, including
         // edge cases, have been fully tested and verified.
         // ====================================================================
-        std::size_t const expectedDelegableCount = 49;
+        // DirectedOfferCreate, DirectedOfferAccept and DirectedOfferCancel are
+        // delegable (proof of concept; only the delegated accept is tested).
+        std::size_t const expectedDelegableCount = 52;
 
         BEAST_EXPECTS(
             delegableCount == expectedDelegableCount,

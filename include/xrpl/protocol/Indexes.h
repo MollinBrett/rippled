@@ -183,6 +183,20 @@ check(UInt256 const& key) noexcept
 /** @} */
 
 /**
+ * A DirectedOffer
+ */
+/** @{ */
+Keylet
+directedOffer(AccountID const& id, SeqProxy const& seq) noexcept;
+
+inline Keylet
+directedOffer(UInt256 const& key) noexcept
+{
+    return {ltDIRECTED_OFFER, key};
+}
+/** @} */
+
+/**
  * A TransactionProposal
  */
 /** @{ */

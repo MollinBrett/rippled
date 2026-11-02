@@ -168,6 +168,30 @@ parseCheck(
 }
 
 static std::expected<UInt256, json::Value>
+parseDirectedOffer(
+    json::Value const& params,
+    json::StaticString const fieldName,
+    [[maybe_unused]] unsigned const apiVersion)
+{
+    if (!params.isObject())
+    {
+        return parseObjectID(params, fieldName);
+    }
+
+    auto const account =
+        ledger_entry_helpers::requiredAccountID(params, jss::account, "malformedAddress");
+    if (!account)
+        return std::unexpected(account.error());
+
+    auto const sequence =
+        ledger_entry_helpers::requiredUInt32(params, jss::seq, "malformedRequest");
+    if (!sequence)
+        return std::unexpected(sequence.error());
+
+    return keylet::directedOffer(*account, SeqProxy::rawSequence(*sequence)).key;
+}
+
+static std::expected<UInt256, json::Value>
 parseCredential(
     json::Value const& cred,
     json::StaticString const fieldName,
