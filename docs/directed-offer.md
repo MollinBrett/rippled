@@ -2,6 +2,8 @@
 
 Status: proof-of-concept draft, not a standard. Branch `feature/directed-offer`.
 
+A runnable demo, with a recording, is in [`demo/directed-offer`](../demo/directed-offer/README.md).
+
 ## Summary
 
 A seller locks an asset on the ledger and offers it to a named set of buyers at a fixed price

@@ -4,6 +4,8 @@ A local playground for the DirectedOffer proof of concept: a standalone `xrpld`,
 JSON-RPC walkthrough, and a one-page UI. Use it only on a throwaway local ledger, because the
 server signs every transaction with secrets the page holds.
 
+![A seller quotes bonds to two buyers; one buyer lifts an odd lot, counter-bids, and the seller hits the bid, each settling in one ledger transaction; a third buyer is refused](demo.gif)
+
 ## Run
 
 Build `xrpld` first (from the repository root, `cmake --build .build --target xrpld`). Then:
