@@ -29,13 +29,25 @@ UI:
 python3 -m http.server 8088 --bind 127.0.0.1
 ```
 
-Then open http://127.0.0.1:8088/ and press "Set up demo accounts". This funds gw, alice, bob,
-carol and dave from the genesis account, and creates the BOND token (an MPT) and USD (an IOU).
+Then open http://127.0.0.1:8088/ and press "Set up market". This opens accounts for an Issuer,
+a Seller and three buyers from the genesis account. The Issuer issues BOND (an MPT) and USD (an
+IOU stablecoin), delivers 100 BOND to the Seller and 1,000 USD to each buyer.
 
-Each offer card lets a named buyer accept at the tier price, or bid a total of its own for a
-quantity (`DirectedOfferCounterCreate`, which locks the payment). The seller takes a bid
-(`DirectedOfferAccept` with `DirectedOfferCounterID`) or declines it, and the buyer can withdraw
-it (`DirectedOfferCancel` with `DirectedOfferCounterID`).
+The page is split in three, so it is always clear who is acting:
+
+| Pane | Who | Actions | Transaction |
+|---|---|---|---|
+| Seller desk (left) | Seller | Send a directed quote to chosen counterparties, with size tiers | `DirectedOfferCreate` |
+| | | Hit or decline a counter-bid | `DirectedOfferAccept` / `DirectedOfferCancel` with `DirectedOfferCounterID` |
+| | | Pull a quote | `DirectedOfferCancel` |
+| XRP Ledger (middle) | | Each transaction, who signed it, its result, what it moved for each party, and the raw JSON | |
+| Buyer desk (right) | Buyer A, B or C ("Viewing as") | Lift the offer at the quoted price | `DirectedOfferAccept` |
+| | | Send a counter-bid: a total price for a size, with the USD locked | `DirectedOfferCounterCreate` |
+| | | Withdraw a counter-bid | `DirectedOfferCancel` with `DirectedOfferCounterID` |
+
+By default the Seller quotes Buyers A and B and leaves out Buyer C. Viewing as Buyer C, open
+"Quotes on the ledger not addressed to you" and try to lift one: the ledger refuses it with
+`tecNO_PERMISSION`.
 
 ## Notes
 

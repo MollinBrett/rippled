@@ -3,109 +3,154 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>DirectedOffer Demo</title>
+<title>Directed Quote DvP</title>
 <style>
   :root {
-    --bg: #f6f7f9; --panel: #fff; --text: #1b1f24; --muted: #5d6673; --line: #dde1e6;
-    --accent: #2457d6; --ok: #1d7f45; --bad: #b42318; --warn: #9a6700; --chip: #eef2fb;
+    --bg: #f4f5f7; --panel: #fff; --text: #1b1f24; --muted: #5d6673; --line: #dde1e6; --soft: #f0f2f5;
+    --seller: #b45309; --seller-bg: #fff7ed; --buyer: #0f766e; --buyer-bg: #ecfdf5;
+    --ledger: #4338ca; --ledger-bg: #eef2ff; --issuer: #6b7280;
+    --ok: #1d7f45; --bad: #b42318; --warn: #9a6700;
   }
   @media (prefers-color-scheme: dark) {
     :root {
-      --bg: #111418; --panel: #1a1e24; --text: #e6e9ed; --muted: #98a2ae; --line: #2c333c;
-      --accent: #7aa2ff; --ok: #4cc38a; --bad: #ff7a6e; --warn: #e3b341; --chip: #222a36;
+      --bg: #0f1216; --panel: #181c22; --text: #e6e9ed; --muted: #98a2ae; --line: #2a313a; --soft: #20262e;
+      --seller: #f59e0b; --seller-bg: #2a1f10; --buyer: #2dd4bf; --buyer-bg: #0f2622;
+      --ledger: #a5b4fc; --ledger-bg: #1b1e33; --issuer: #9ca3af;
+      --ok: #4cc38a; --bad: #ff7a6e; --warn: #e3b341;
     }
   }
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--bg); color: var(--text);
          font: 14px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
-  header { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; padding: 12px 16px;
-           border-bottom: 1px solid var(--line); background: var(--panel); position: sticky; top: 0; z-index: 1; }
+  header { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; padding: 10px 16px;
+           border-bottom: 1px solid var(--line); background: var(--panel); }
   header h1 { font-size: 16px; margin: 0 8px 0 0; }
   .status { color: var(--muted); }
-  .status b { color: var(--text); }
-  main { display: grid; gap: 16px; padding: 16px; max-width: 1200px; margin: 0 auto;
-         grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
-  section { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 14px; min-width: 0; }
-  section.wide { grid-column: 1 / -1; }
-  h2 { font-size: 14px; margin: 0 0 10px; }
-  table { border-collapse: collapse; width: 100%; }
-  th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
-  th { color: var(--muted); font-weight: 500; font-size: 12px; }
-  td.num { font-variant-numeric: tabular-nums; }
-  .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
+  main { display: grid; gap: 12px; padding: 12px; grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr) minmax(0, 1fr); }
+  @media (max-width: 1000px) { main { grid-template-columns: minmax(0, 1fr); } }
+
+  .pane { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; min-width: 0; overflow: hidden; }
+  .pane > .bar { padding: 10px 14px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: space-between; }
+  .pane > .bar h2 { margin: 0; font-size: 15px; letter-spacing: .02em; text-transform: uppercase; }
+  .pane > .body { padding: 12px 14px; }
+  .pane.seller { border-top: 4px solid var(--seller); } .pane.seller > .bar { background: var(--seller-bg); color: var(--seller); }
+  .pane.buyer { border-top: 4px solid var(--buyer); } .pane.buyer > .bar { background: var(--buyer-bg); color: var(--buyer); }
+  .pane.ledger { border-top: 4px solid var(--ledger); } .pane.ledger > .bar { background: var(--ledger-bg); color: var(--ledger); }
+
+  h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin: 16px 0 8px; }
+  h3:first-child { margin-top: 0; }
+  .card { border: 1px solid var(--line); border-radius: 8px; padding: 10px; margin-bottom: 10px; }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 8px; }
+  .row:last-child { margin-bottom: 0; }
   .muted { color: var(--muted); }
+  .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
+  .ok { color: var(--ok); } .bad { color: var(--bad); } .warn { color: var(--warn); }
+  .chip { display: inline-block; background: var(--soft); border-radius: 10px; padding: 1px 8px; font-size: 12px; }
+  .positions { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+  .pos { background: var(--soft); border-radius: 8px; padding: 8px; }
+  .pos b { display: block; font-size: 18px; font-variant-numeric: tabular-nums; }
+  .pos span { font-size: 12px; color: var(--muted); }
+
   button { font: inherit; padding: 6px 12px; border-radius: 6px; border: 1px solid var(--line);
            background: var(--panel); color: var(--text); cursor: pointer; }
-  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
   button:disabled { opacity: .5; cursor: default; }
+  .seller button.primary { background: var(--seller); border-color: var(--seller); color: #fff; }
+  .buyer button.primary { background: var(--buyer); border-color: var(--buyer); color: #fff; }
+  header button.primary, .ledger button.primary { background: var(--ledger); border-color: var(--ledger); color: #fff; }
   input, select { font: inherit; padding: 5px 8px; border: 1px solid var(--line); border-radius: 6px;
                   background: var(--panel); color: var(--text); min-width: 0; }
-  input[type=number] { width: 90px; }
+  input[type=number] { width: 80px; }
   label { display: inline-flex; gap: 6px; align-items: center; }
-  .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 8px; }
-  .bid { border-left: 3px solid var(--accent); padding-left: 8px; }
-  .chip { display: inline-block; background: var(--chip); border-radius: 10px; padding: 1px 8px; margin: 1px 2px; font-size: 12px; }
-  .ok { color: var(--ok); } .bad { color: var(--bad); } .warn { color: var(--warn); }
-  .offer { border: 1px solid var(--line); border-radius: 8px; padding: 10px; margin-bottom: 10px; }
-  .offer-head { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px; margin-bottom: 6px; }
-  #log { max-height: 520px; overflow: auto; margin: 0; padding: 0; list-style: none; }
-  #log li { padding: 4px 0; border-bottom: 1px solid var(--line); }
-  summary { cursor: pointer; }
-  pre.raw { margin: 6px 0 2px; padding: 8px; background: var(--chip); border-radius: 6px; color: var(--text);
+  table { border-collapse: collapse; }
+  td, th { padding: 3px 6px; text-align: left; }
+  th { color: var(--muted); font-weight: 500; font-size: 12px; }
+
+  .badge { display: inline-block; font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase;
+           padding: 1px 7px; border-radius: 4px; color: #fff; }
+  .badge.seller { background: var(--seller); } .badge.buyer { background: var(--buyer); }
+  .badge.issuer { background: var(--issuer); }
+  .bidcard { border-left: 3px solid var(--buyer); padding-left: 8px; margin-top: 8px; }
+
+  #feed { list-style: none; margin: 0; padding: 0; max-height: calc(100vh - 170px); overflow: auto; }
+  #feed li { border-bottom: 1px solid var(--line); padding: 8px 0; }
+  #feed .what { font-weight: 600; }
+  #feed .tx { margin-left: 4px; }
+  #feed ul.fx { margin: 4px 0 0; padding-left: 18px; font-size: 13px; }
+  #feed .settled { display: inline-block; margin-top: 4px; font-size: 12px; font-weight: 600; color: var(--ledger); }
+  summary { cursor: pointer; color: var(--muted); font-size: 12px; margin-top: 4px; }
+  pre.raw { margin: 6px 0 2px; padding: 8px; background: var(--soft); border-radius: 6px; color: var(--text);
             font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre-wrap; word-break: break-all;
-            max-height: 360px; overflow: auto; }
-  .tiers td, .tiers th { padding: 3px 6px; }
-  @media (max-width: 800px) { main { grid-template-columns: minmax(0, 1fr); padding: 16px; } }
+            max-height: 340px; overflow: auto; }
 </style>
 </head>
 <body>
 <header>
-  <h1>DirectedOffer demo</h1>
+  <h1>Directed quotes · delivery versus payment</h1>
   <span class="status" id="conn">connecting…</span>
-  <span class="status">ledger <b id="ledger">–</b></span>
-  <button id="closeBtn" title="ledger_accept">Close ledger</button>
-  <label class="status"><input type="checkbox" id="autoClose" checked> close after each transaction</label>
-  <label class="status"><input type="checkbox" id="showRaw"> expand raw JSON</label>
-  <button id="setupBtn" class="primary">Set up demo accounts</button>
+  <button id="setupBtn" class="primary">Set up market</button>
+  <span class="status">Issuer issues BOND (MPT) and USD (stablecoin) · the seller holds bonds · buyers hold USD</span>
 </header>
 
 <main>
-  <section class="wide">
-    <h2>Accounts</h2>
-    <div id="accounts" class="muted">No demo accounts yet. Press “Set up demo accounts”.</div>
+  <!-- Seller's view -->
+  <section class="pane seller">
+    <div class="bar"><h2>Seller desk</h2><span class="mono" id="sellerAddr"></span></div>
+    <div class="body">
+      <h3>Positions</h3>
+      <div class="positions" id="sellerPos"></div>
+
+      <h3>New directed quote</h3>
+      <div class="card">
+        <div class="row"><label>Size <input type="number" id="qSize" value="50" min="1"> BOND</label>
+          <span class="muted">priced in USD</span></div>
+        <table id="tiers"><thead><tr><th>From size</th><th>Price per bond</th><th></th></tr></thead><tbody></tbody></table>
+        <div class="row" style="margin-top:6px"><button id="addTier">Add size tier</button></div>
+        <div class="row"><span class="muted">Counterparties:</span><span id="qBuyers"></span></div>
+        <div class="row"><label>Good for <input type="number" id="qExpire" placeholder="until pulled" min="1" style="width:120px"> seconds</label></div>
+        <button id="sendQuote" class="primary">Send quote</button>
+      </div>
+
+      <h3>My quotes</h3>
+      <div id="sellerQuotes" class="muted">None.</div>
+    </div>
   </section>
 
-  <section>
-    <h2>Create a directed offer</h2>
-    <div class="row">
-      <label>Seller <select id="cSeller"></select></label>
-      <label>Sell <input type="number" id="cAmount" value="50" min="0" step="any"></label>
-      <select id="cSold"><option>BOND</option><option>USD</option></select>
-      <label>for <select id="cPay"><option>USD</option><option>BOND</option><option>XRP</option></select></label>
+  <!-- What the ledger sees -->
+  <section class="pane ledger">
+    <div class="bar">
+      <h2>XRP Ledger</h2>
+      <span>ledger <b id="ledger">–</b></span>
     </div>
-    <table class="tiers" id="tiers">
-      <thead><tr><th>From quantity</th><th>Unit price</th><th></th></tr></thead>
-      <tbody></tbody>
-    </table>
-    <div class="row" style="margin-top:6px"><button id="addTier">Add tier</button></div>
-    <div class="row">
-      <span class="muted">Buyers:</span>
-      <span id="cBuyers"></span>
+    <div class="body">
+      <div class="row">
+        <button id="closeBtn">Close ledger</button>
+        <label class="status"><input type="checkbox" id="autoClose" checked> close after each transaction</label>
+        <label class="status"><input type="checkbox" id="showRaw"> expand raw JSON</label>
+      </div>
+      <ul id="feed"></ul>
     </div>
-    <div class="row">
-      <label>Expires in <input type="number" id="cExpire" placeholder="never" min="1"> seconds</label>
-    </div>
-    <button id="createBtn" class="primary">Create offer</button>
   </section>
 
-  <section>
-    <h2>Activity</h2>
-    <ul id="log"></ul>
-  </section>
+  <!-- Buyer's view -->
+  <section class="pane buyer">
+    <div class="bar"><h2>Buyer desk</h2>
+      <label>Viewing as <select id="viewAs"></select></label></div>
+    <div class="body">
+      <div class="row"><span class="mono" id="buyerAddr"></span></div>
+      <h3>Positions</h3>
+      <div class="positions" id="buyerPos"></div>
 
-  <section class="wide">
-    <h2>Open offers</h2>
-    <div id="offers" class="muted">No offers.</div>
+      <h3>Quotes directed to you</h3>
+      <div id="buyerQuotes" class="muted">None.</div>
+
+      <h3>Your counter-bids</h3>
+      <div id="buyerBids" class="muted">None.</div>
+
+      <details id="otherQuotes" style="margin-top:14px">
+        <summary>Quotes on the ledger not addressed to you</summary>
+        <div id="otherList" class="muted" style="margin-top:8px">None.</div>
+      </details>
+    </div>
   </section>
 </main>
 
@@ -114,13 +159,20 @@
 // Talks to a standalone xrpld through its admin WebSocket. The server signs
 // with the secrets below; this is only safe on a throwaway local ledger.
 const WS_URL = "ws://127.0.0.1:6006";
-const GENESIS = { name: "genesis", address: "rHb9CJAWyB4rj91VRWn96DkukG4bwdtyTh", secret: "snoPBrXtMeMyMHUVTgbuqAfg1SUTb" };
-const NAMES = ["gw", "alice", "bob", "carol", "dave"];
-const STORE = "directed-offer-demo";
+const GENESIS = { role: "genesis", address: "rHb9CJAWyB4rj91VRWn96DkukG4bwdtyTh", secret: "snoPBrXtMeMyMHUVTgbuqAfg1SUTb" };
+const ROLES = {
+  issuer: { label: "Issuer", kind: "issuer" },
+  seller: { label: "Seller", kind: "seller" },
+  buyerA: { label: "Buyer A", kind: "buyer" },
+  buyerB: { label: "Buyer B", kind: "buyer" },
+  buyerC: { label: "Buyer C", kind: "buyer" },
+};
+const BUYERS = ["buyerA", "buyerB", "buyerC"];
+const STORE = "directed-quote-demo";
 
 let ws, nextId = 1;
 const pending = new Map();
-let state = load() || { accounts: {}, issuance: null };
+let state = load() || { accounts: {}, issuance: null, viewAs: "buyerA" };
 
 function load() { try { return JSON.parse(localStorage.getItem(STORE)); } catch { return null; } }
 function save() { try { localStorage.setItem(STORE, JSON.stringify(state)); } catch {} }
@@ -131,13 +183,13 @@ const el = (tag, attrs = {}, ...kids) => {
   for (const [k, v] of Object.entries(attrs)) {
     if (k === "class") e.className = v; else if (k.startsWith("on")) e[k] = v; else e.setAttribute(k, v);
   }
-  for (const k of kids) e.append(k);
+  for (const k of kids) if (k !== null && k !== undefined && k !== "") e.append(k);
   return e;
 };
 
 function connect() {
   ws = new WebSocket(WS_URL);
-  ws.onopen = async () => { $("conn").innerHTML = "<b class='ok'>connected</b> to " + WS_URL; await validateState(); refresh(); };
+  ws.onopen = async () => { $("conn").innerHTML = "<b class='ok'>connected</b> to local node"; await validateState(); refresh(); };
   ws.onclose = () => { $("conn").innerHTML = "<b class='bad'>disconnected</b>, retrying…"; setTimeout(connect, 2000); };
   ws.onmessage = (m) => {
     const msg = JSON.parse(m.data);
@@ -156,11 +208,21 @@ function rpc(command, params = {}) {
 
 async function closeLedger() { await rpc("ledger_accept"); await refreshLedger(); }
 
-// A log line; with raw data it expands to show the JSON exchanged with the node.
-function log(text, cls = "", raw = null) {
-  if (!raw) return $("log").prepend(el("li", { class: cls }, text));
-  $("log").prepend(el("li", { class: cls }, rawDetails(text, raw)));
+// ---- roles and assets ----------------------------------------------------
+
+const acct = (role) => state.accounts[role];
+function roleOf(address) { return Object.keys(state.accounts).find((r) => state.accounts[r].address === address); }
+function badge(role) {
+  const r = ROLES[role];
+  return r ? el("span", { class: "badge " + r.kind }, r.label) : el("span", { class: "chip mono" }, "genesis");
 }
+function usd(value) { return { currency: "USD", issuer: acct("issuer").address, value: String(value) }; }
+function bond(value) { return { mpt_issuance_id: state.issuance, value: String(value) }; }
+function valueOf(amt) { return typeof amt === "string" ? Number(amt) / 1e6 : Number(amt.value); }
+function fmt(n) { return Number(n).toLocaleString(undefined, { maximumFractionDigits: 4 }); }
+function signed(n) { return (n > 0 ? "+" : "−") + fmt(Math.abs(n)); }
+
+// ---- ledger feed ---------------------------------------------------------
 
 function rawDetails(summary, raw) {
   const d = el("details", { class: "raw" }, el("summary", {}, summary), el("pre", { class: "raw" }, JSON.stringify(raw, null, 2)));
@@ -168,78 +230,112 @@ function rawDetails(summary, raw) {
   return d;
 }
 
-async function submit(tx, who, label) {
-  const res = await rpc("submit", { tx_json: tx, secret: who.secret });
-  const code = res.engine_result || res.error || "error";
-  const good = code === "tesSUCCESS";
-  const raw = { request: tx, response: res };
-  if ($("autoClose").checked) {
-    await closeLedger();
-    // Once the ledger closes, the node has the final result and metadata.
-    if (res.tx_json?.hash) {
-      const final = await rpc("tx", { transaction: res.tx_json.hash });
-      raw.validated = { result: final.meta?.TransactionResult, ledger_index: final.ledger_index, meta: final.meta };
+// Holdings per role, to show what each transaction moved. Metadata alone
+// cannot: a field absent before the change, such as a first MPT balance or
+// LockedAmount, has no previous value in it.
+async function snapshot() {
+  const snap = {};
+  for (const role of Object.keys(state.accounts)) {
+    if (role === "issuer") continue;
+    const p = await positions(role);
+    const bids = await rpc("account_objects", { account: acct(role).address, type: "directed_offer_counter" });
+    p.usdLocked = (bids.account_objects || []).filter((b) => b.Account === acct(role).address)
+      .reduce((sum, b) => sum + valueOf(b.Amount), 0);
+    snap[role] = p;
+  }
+  return snap;
+}
+
+const HOLDINGS = [["bond", "BOND"], ["bondLocked", "BOND locked"], ["usd", "USD"], ["usdLocked", "USD locked"]];
+
+// What a transaction changed: holdings per role, from snapshots, and the
+// quote and counter-bid entries it opened, changed or closed, from metadata.
+function effects(before, after, meta) {
+  const out = [];
+  for (const role of Object.keys(after)) {
+    for (const [key, label] of HOLDINGS) {
+      const d = after[role][key] - (before[role]?.[key] ?? 0);
+      if (Math.abs(d) > 1e-9) out.push([role, `${label} ${signed(d)}`]);
     }
   }
-  log(`${label}: ${code}${good ? "" : " — " + (res.engine_result_message || res.error_message || "")}`, good ? "ok" : "bad", raw);
+  for (const n of meta?.AffectedNodes || []) {
+    const [kind, node] = Object.entries(n)[0];
+    const f = node.FinalFields || node.NewFields || {};
+    const p = node.PreviousFields || {};
+    if (node.LedgerEntryType === "DirectedOffer") {
+      if (kind === "CreatedNode") out.push([null, `Quote opened, ${fmt(valueOf(f.Amount))} BOND locked`]);
+      else if (kind === "DeletedNode") out.push([null, "Quote closed"]);
+      else if ("Amount" in p) out.push([null, `Quote size ${fmt(valueOf(p.Amount))} → ${fmt(valueOf(f.Amount))} BOND`]);
+    } else if (node.LedgerEntryType === "DirectedOfferCounter") {
+      if (kind === "CreatedNode") out.push([null, `Counter-bid recorded, ${fmt(valueOf(f.Amount))} USD locked`]);
+      else if (kind === "DeletedNode") out.push([null, "Counter-bid closed"]);
+    }
+  }
+  return out;
+}
+
+function feed(role, what, tx, res, final, fx) {
+  const code = final?.meta?.TransactionResult || res.engine_result || res.error || "error";
+  const good = code === "tesSUCCESS";
+  const settled = good && fx.some(([, t]) => t.startsWith("BOND +")) && fx.some(([, t]) => t.startsWith("USD +"));
+  $("feed").prepend(el("li", {},
+    el("div", {}, badge(role), " ", el("span", { class: "what" }, what)),
+    el("div", {}, el("span", { class: "mono muted tx" }, tx.TransactionType), " ",
+      el("span", { class: "mono " + (good ? "ok" : "bad") }, code),
+      good ? "" : el("span", { class: "muted" }, " — " + (res.engine_result_message || res.error_message || ""))),
+    settled ? el("span", { class: "settled" }, "Both legs settled in one transaction") : "",
+    fx.length ? el("ul", { class: "fx" }, ...fx.map(([r, t]) => el("li", {}, r ? badge(r) : "", " ", t))) : "",
+    rawDetails("Raw transaction and metadata", { request: tx, response: res, validated: final ?? "ledger not closed yet" })));
+}
+
+async function submit(role, tx, what) {
+  const who = role === "genesis" ? GENESIS : acct(role);
+  const before = await snapshot();
+  const res = await rpc("submit", { tx_json: { ...tx, Account: who.address }, secret: who.secret });
+  let final = null, fx = [];
+  if ($("autoClose").checked) {
+    await closeLedger();
+    if (res.tx_json?.hash) final = await rpc("tx", { transaction: res.tx_json.hash });
+    fx = effects(before, await snapshot(), final?.meta);
+  }
+  feed(role, what, { ...tx, Account: who.address }, res, final, fx);
   return res;
 }
 
 async function created(res, type) {
   const tx = await rpc("tx", { transaction: res.tx_json.hash });
-  const node = tx.meta.AffectedNodes.find((n) => n.CreatedNode?.LedgerEntryType === type);
-  return node?.CreatedNode.LedgerIndex;
+  return tx.meta.AffectedNodes.find((n) => n.CreatedNode?.LedgerEntryType === type)?.CreatedNode.LedgerIndex;
 }
 
-// ---- assets -------------------------------------------------------------
-
-function amount(asset, value) {
-  const gw = state.accounts.gw.address;
-  if (asset === "XRP") return String(Math.ceil(Number(value) * 1e6));  // drops
-  if (asset === "USD") return { currency: "USD", issuer: gw, value: String(value) };
-  return { mpt_issuance_id: state.issuance, value: String(value) };
-}
-function issue(asset) {
-  if (asset === "XRP") return { currency: "XRP" };
-  if (asset === "USD") return { currency: "USD", issuer: state.accounts.gw.address };
-  return { mpt_issuance_id: state.issuance };
-}
-function assetOf(amt) {
-  if (typeof amt === "string") return "XRP";
-  return amt.mpt_issuance_id ? "BOND" : amt.currency;
-}
-function valueOf(amt) { return typeof amt === "string" ? Number(amt) / 1e6 : Number(amt.value); }
-function fmt(n) { return Number(n).toLocaleString(undefined, { maximumFractionDigits: 6 }); }
-
-// ---- setup --------------------------------------------------------------
+// ---- setup ---------------------------------------------------------------
 
 async function setup() {
   $("setupBtn").disabled = true;
   const auto = $("autoClose").checked;
   $("autoClose").checked = true;
   try {
-    state = { accounts: {}, issuance: null };
-    for (const name of NAMES) {
+    state = { accounts: {}, issuance: null, viewAs: "buyerA" };
+    for (const role of Object.keys(ROLES)) {
       const w = await rpc("wallet_propose");
-      state.accounts[name] = { name, address: w.account_id, secret: w.master_seed };
-      await submit({ TransactionType: "Payment", Account: GENESIS.address, Destination: w.account_id, Amount: "10000000000" },
-                   GENESIS, `fund ${name} with 10,000 XRP`);
+      state.accounts[role] = { address: w.account_id, secret: w.master_seed };
+      await submit("genesis", { TransactionType: "Payment", Destination: w.account_id, Amount: "10000000000" },
+                   `Open ${ROLES[role].label} account with 10,000 XRP`);
     }
-    const { gw, alice, bob, carol, dave } = state.accounts;
-    await submit({ TransactionType: "AccountSet", Account: gw.address, SetFlag: 8 }, gw, "gw enables rippling");
-    await submit({ TransactionType: "AccountSet", Account: gw.address, SetFlag: 17 }, gw, "gw allows trust-line locking");
-    const res = await submit({ TransactionType: "MPTokenIssuanceCreate", Account: gw.address, Flags: 0x08 | 0x20,
-                               AssetScale: 0, MPTokenMetadata: "424F4E44" }, gw, "gw issues BOND (MPT)");
-    const idx = await created(res, "MPTokenIssuance");
-    state.issuance = (await rpc("ledger_entry", { index: idx })).node.mpt_issuance_id;
-    for (const a of [alice, bob, carol, dave]) {
-      await submit({ TransactionType: "TrustSet", Account: a.address, LimitAmount: amount("USD", 1000000) }, a, `${a.name} trusts USD`);
-      await submit({ TransactionType: "MPTokenAuthorize", Account: a.address, MPTokenIssuanceID: state.issuance }, a, `${a.name} holds BOND`);
-      await submit({ TransactionType: "Payment", Account: gw.address, Destination: a.address, Amount: amount("USD", 1000) }, gw, `gw sends ${a.name} 1,000 USD`);
+    await submit("issuer", { TransactionType: "AccountSet", SetFlag: 8 }, "Enable USD transfers between holders");
+    await submit("issuer", { TransactionType: "AccountSet", SetFlag: 17 }, "Allow USD to be locked for settlement");
+    const res = await submit("issuer", { TransactionType: "MPTokenIssuanceCreate", Flags: 0x08 | 0x20, AssetScale: 0,
+                                         MPTokenMetadata: "424F4E44" }, "Issue the BOND token");
+    state.issuance = (await rpc("ledger_entry", { index: await created(res, "MPTokenIssuance") })).node.mpt_issuance_id;
+    for (const role of ["seller", ...BUYERS]) {
+      await submit(role, { TransactionType: "TrustSet", LimitAmount: usd(1000000) }, "Open a USD line");
+      await submit(role, { TransactionType: "MPTokenAuthorize", MPTokenIssuanceID: state.issuance }, "Open a BOND holding");
     }
-    await submit({ TransactionType: "Payment", Account: gw.address, Destination: alice.address, Amount: amount("BOND", 100) }, gw, "gw sends alice 100 BOND");
+    for (const role of BUYERS)
+      await submit("issuer", { TransactionType: "Payment", Destination: acct(role).address, Amount: usd(1000) },
+                   `Fund ${ROLES[role].label} with 1,000 USD`);
+    await submit("issuer", { TransactionType: "Payment", Destination: acct("seller").address, Amount: bond(100) },
+                 "Deliver 100 BOND to the Seller");
     save();
-    log("Demo ready: alice holds 100 BOND; everyone holds 1,000 USD.", "ok");
   } finally {
     $("autoClose").checked = auto;
     $("setupBtn").disabled = false;
@@ -250,27 +346,33 @@ async function setup() {
 // A restarted standalone node starts from a fresh genesis ledger, so saved
 // accounts may no longer exist.
 async function validateState() {
-  const gw = state.accounts.gw;
-  if (!gw) return;
-  const info = await rpc("account_info", { account: gw.address });
-  if (info.error) { state = { accounts: {}, issuance: null }; save(); log("Node was restarted; set up demo accounts again.", "warn"); }
+  if (!acct("issuer")) return;
+  const info = await rpc("account_info", { account: acct("issuer").address });
+  if (info.error) { state = { accounts: {}, issuance: null, viewAs: "buyerA" }; save(); }
 }
 
-// ---- reads --------------------------------------------------------------
+// ---- reads ---------------------------------------------------------------
 
-async function balances(a) {
-  const info = await rpc("account_info", { account: a.address });
+async function positions(role) {
+  const a = acct(role);
   const lines = await rpc("account_lines", { account: a.address });
   const mpts = await rpc("account_objects", { account: a.address, type: "mptoken" });
-  const usd = lines.lines?.find((l) => l.currency === "USD");
+  const line = lines.lines?.find((l) => l.currency === "USD");
   const mpt = mpts.account_objects?.find((o) => o.MPTokenIssuanceID === state.issuance);
-  return {
-    xrp: info.account_data ? Number(info.account_data.Balance) / 1e6 : null,
-    usd: usd ? Number(usd.balance) : null,
-    bond: mpt ? Number(mpt.MPTAmount || 0) : null,
-    bondLocked: mpt ? Number(mpt.LockedAmount || 0) : 0,
-    owners: info.account_data?.OwnerCount ?? 0,
-  };
+  return { usd: line ? Number(line.balance) : 0, bond: Number(mpt?.MPTAmount || 0), bondLocked: Number(mpt?.LockedAmount || 0) };
+}
+
+async function readMarket() {
+  const quotes = [], bids = new Map();
+  for (const role of Object.keys(state.accounts)) {
+    const q = await rpc("account_objects", { account: acct(role).address, type: "directed_offer" });
+    quotes.push(...(q.account_objects || []));
+    // A counter-bid is listed under both the buyer and the seller.
+    const b = await rpc("account_objects", { account: acct(role).address, type: "directed_offer_counter" });
+    for (const x of b.account_objects || []) bids.set(x.index, x);
+  }
+  const closeTime = (await rpc("ledger", { ledger_index: "validated" })).ledger.close_time;
+  return { quotes, bids: [...bids.values()], closeTime };
 }
 
 async function refreshLedger() {
@@ -278,186 +380,176 @@ async function refreshLedger() {
   $("ledger").textContent = r.ledger_current_index ?? "–";
 }
 
-async function refresh() {
-  await refreshLedger();
-  renderForm();
-  const accts = Object.values(state.accounts);
-  if (!accts.length) {
-    $("accounts").textContent = "No demo accounts yet. Press “Set up demo accounts”.";
-    $("offers").textContent = "No offers.";
-    return;
-  }
-  const rows = [];
-  for (const a of accts) {
-    const b = await balances(a);
-    rows.push(el("tr", {}, el("td", {}, a.name), el("td", { class: "mono" }, a.address),
-      el("td", { class: "num" }, b.xrp == null ? "–" : fmt(b.xrp)),
-      el("td", { class: "num" }, a.name === "gw" ? "issuer" : b.usd == null ? "–" : fmt(b.usd)),
-      el("td", { class: "num" }, a.name === "gw" ? "issuer" : b.bond == null ? "–" : fmt(b.bond) + (b.bondLocked ? ` (+${fmt(b.bondLocked)} locked)` : "")),
-      el("td", { class: "num" }, String(b.owners))));
-  }
-  $("accounts").replaceChildren(el("table", {},
-    el("thead", {}, el("tr", {}, ...["Name", "Address", "XRP", "USD", "BOND", "Objects"].map((h) => el("th", {}, h)))),
-    el("tbody", {}, ...rows)));
-  await renderOffers();
+function posCards(items) {
+  return items.map(([label, v]) => el("div", { class: "pos" }, el("span", {}, label), el("b", {}, fmt(v))));
 }
 
-// ---- create form ---------------------------------------------------------
+// Mirrors directedOfferPrice: the tier with the largest MinQuantity not above
+// the size prices the whole purchase. Display only; the ledger decides.
+function quotePrice(q, size) {
+  let tier = null;
+  for (const t of q.PriceTiers) if (valueOf(t.PriceTier.MinQuantity) <= size) tier = t.PriceTier;
+  return tier ? { unit: valueOf(tier.UnitPrice), total: size * valueOf(tier.UnitPrice) } : null;
+}
+const tierText = (q) => q.PriceTiers.map((t) =>
+  el("span", { class: "chip" }, `${fmt(valueOf(t.PriceTier.MinQuantity))}+ @ ${fmt(valueOf(t.PriceTier.UnitPrice))}`));
+const buyersOf = (q) => (q.Counterparties || []).map((c) => roleOf(c.CounterpartyEntry.Account));
+
+async function refresh() {
+  await refreshLedger();
+  renderQuoteForm();
+  renderViewAs();
+  if (!acct("issuer")) {
+    for (const id of ["sellerPos", "buyerPos"]) $(id).replaceChildren(el("span", { class: "muted" }, "Press “Set up market”."));
+    for (const id of ["sellerQuotes", "buyerQuotes", "buyerBids", "otherList"]) $(id).textContent = "None.";
+    $("sellerAddr").textContent = $("buyerAddr").textContent = "";
+    return;
+  }
+  const market = await readMarket();
+  await renderSeller(market);
+  await renderBuyer(market);
+}
+
+// ---- seller desk ---------------------------------------------------------
 
 let tiers = [[1, 10], [10, 9], [20, 8]];
 
-function renderForm() {
-  const names = Object.keys(state.accounts).filter((n) => n !== "gw");
-  const seller = $("cSeller").value || "alice";
-  $("cSeller").replaceChildren(...names.map((n) => el("option", n === seller ? { selected: "" } : {}, n)));
-  const chosen = new Set([...document.querySelectorAll("#cBuyers input:checked")].map((i) => i.value));
-  const first = !document.querySelector("#cBuyers input");
-  $("cBuyers").replaceChildren(...names.filter((n) => n !== $("cSeller").value).map((n) => {
-    const box = el("input", { type: "checkbox", value: n });
-    box.checked = first ? (n === "bob" || n === "carol") : chosen.has(n);
-    return el("label", { style: "margin-right:10px" }, box, n);
+function renderQuoteForm() {
+  const chosen = new Set([...document.querySelectorAll("#qBuyers input:checked")].map((i) => i.value));
+  const first = !document.querySelector("#qBuyers input");
+  $("qBuyers").replaceChildren(...BUYERS.map((r) => {
+    const box = el("input", { type: "checkbox", value: r });
+    box.checked = first ? r !== "buyerC" : chosen.has(r);
+    return el("label", { style: "margin-right:10px" }, box, badge(r));
   }));
-  const pay = $("cPay").value;
   $("tiers").tBodies[0].replaceChildren(...tiers.map((t, i) => {
-    const q = el("input", { type: "number", value: t[0], min: "0", step: "any" });
+    const q = el("input", { type: "number", value: t[0], min: "1" });
     const p = el("input", { type: "number", value: t[1], min: "0", step: "any" });
     q.oninput = () => (tiers[i][0] = Number(q.value));
     p.oninput = () => (tiers[i][1] = Number(p.value));
-    return el("tr", {}, el("td", {}, q, " ", $("cSold").value), el("td", {}, p, " ", pay),
-      el("td", {}, el("button", { onclick: () => { tiers.splice(i, 1); renderForm(); } }, "Remove")));
+    return el("tr", {}, el("td", {}, q, " BOND"), el("td", {}, p, " USD"),
+      el("td", {}, el("button", { onclick: () => { tiers.splice(i, 1); renderQuoteForm(); } }, "Remove")));
   }));
 }
 
-async function createOffer() {
-  const seller = state.accounts[$("cSeller").value];
-  if (!seller) return log("Set up demo accounts first.", "warn");
-  const sold = $("cSold").value, pay = $("cPay").value;
-  const buyers = [...document.querySelectorAll("#cBuyers input:checked")].map((i) => state.accounts[i.value]);
+async function sendQuote() {
+  if (!acct("seller")) return;
+  const buyers = [...document.querySelectorAll("#qBuyers input:checked")].map((i) => i.value);
   const tx = {
-    TransactionType: "DirectedOfferCreate", Account: seller.address,
-    Amount: amount(sold, $("cAmount").value), PaymentAsset: issue(pay),
-    PriceTiers: tiers.map(([q, p]) => ({ PriceTier: { MinQuantity: amount(sold, q), UnitPrice: amount(pay, p) } })),
-    Counterparties: buyers.map((b) => ({ CounterpartyEntry: { Account: b.address } })),
+    TransactionType: "DirectedOfferCreate", Amount: bond($("qSize").value), PaymentAsset: { currency: "USD", issuer: acct("issuer").address },
+    PriceTiers: tiers.map(([q, p]) => ({ PriceTier: { MinQuantity: bond(q), UnitPrice: usd(p) } })),
+    Counterparties: buyers.map((r) => ({ CounterpartyEntry: { Account: acct(r).address } })),
   };
-  const secs = Number($("cExpire").value);
-  if (secs > 0) {
-    const r = await rpc("ledger", { ledger_index: "validated" });
-    tx.Expiration = Number(r.ledger.close_time) + secs;
-  }
-  await submit(tx, seller, `${seller.name} offers ${$("cAmount").value} ${sold} for ${pay} to ${buyers.map((b) => b.name).join(", ") || "nobody"}`);
+  const secs = Number($("qExpire").value);
+  if (secs > 0) tx.Expiration = Number((await rpc("ledger", { ledger_index: "validated" })).ledger.close_time) + secs;
+  await submit("seller", tx, `Quote ${$("qSize").value} BOND to ${buyers.map((r) => ROLES[r].label).join(", ") || "nobody"}`);
   refresh();
 }
 
-// ---- offers --------------------------------------------------------------
+async function renderSeller({ quotes, bids, closeTime }) {
+  $("sellerAddr").textContent = acct("seller").address;
+  const p = await positions("seller");
+  $("sellerPos").replaceChildren(...posCards([["BOND available", p.bond], ["BOND locked in quotes", p.bondLocked], ["USD", p.usd]]));
 
-function nameOf(addr) { return Object.values(state.accounts).find((a) => a.address === addr)?.name ?? addr; }
-
-// Mirrors directedOfferPrice: the tier with the largest MinQuantity not above
-// the quantity prices the whole purchase. Display only; the ledger decides.
-function quote(offer, qty) {
-  let tier = null;
-  for (const t of offer.PriceTiers) if (valueOf(t.PriceTier.MinQuantity) <= qty) tier = t.PriceTier;
-  if (!tier) return null;
-  const unit = typeof tier.UnitPrice === "string" ? Number(tier.UnitPrice) : Number(tier.UnitPrice.value);
-  const total = qty * unit;
-  return typeof tier.UnitPrice === "string" ? { text: fmt(Math.ceil(total) / 1e6) + " XRP" } : { text: fmt(total) + " " + assetOf(tier.UnitPrice) };
+  const mine = quotes.filter((q) => q.Account === acct("seller").address);
+  if (!mine.length) return $("sellerQuotes").replaceChildren("None.");
+  $("sellerQuotes").replaceChildren(...mine.map((q) => {
+    const expired = q.Expiration && closeTime > q.Expiration;
+    const incoming = bids.filter((b) => b.DirectedOfferID === q.index);
+    return el("div", { class: "card" },
+      el("div", { class: "row" }, el("b", {}, `${fmt(valueOf(q.Amount))} BOND left`), expired ? el("span", { class: "warn" }, "expired") : "",
+        el("span", { class: "mono muted" }, q.index.slice(0, 12) + "…")),
+      el("div", { class: "row" }, el("span", { class: "muted" }, "Size tiers:"), ...tierText(q)),
+      el("div", { class: "row" }, el("span", { class: "muted" }, "Counterparties:"), ...buyersOf(q).map(badge)),
+      ...incoming.map((b) => el("div", { class: "bidcard" },
+        el("div", { class: "row" }, badge(roleOf(b.Account)),
+          `bids ${fmt(valueOf(b.Amount))} USD for ${fmt(valueOf(b.Quantity))} BOND`,
+          el("span", { class: "muted" }, `(${fmt(valueOf(b.Amount) / valueOf(b.Quantity))} per bond)`)),
+        el("div", { class: "row" },
+          el("button", { class: "primary", onclick: async () => {
+            await submit("seller", { TransactionType: "DirectedOfferAccept", DirectedOfferCounterID: b.index },
+                         `Hit ${ROLES[roleOf(b.Account)].label}'s bid: ${fmt(valueOf(b.Quantity))} BOND for ${fmt(valueOf(b.Amount))} USD`);
+            refresh(); } }, "Hit bid"),
+          el("button", { onclick: async () => {
+            await submit("seller", { TransactionType: "DirectedOfferCancel", DirectedOfferCounterID: b.index },
+                         `Decline ${ROLES[roleOf(b.Account)].label}'s bid`);
+            refresh(); } }, "Decline")))),
+      el("div", { class: "row", style: "margin-top:8px" }, el("button", { onclick: async () => {
+        await submit("seller", { TransactionType: "DirectedOfferCancel", DirectedOfferID: q.index }, "Pull quote; locked BOND returns");
+        refresh(); } }, "Pull quote")),
+      rawDetails("Raw ledger entry", q));
+  }));
 }
 
-async function renderOffers() {
-  const offers = [], bids = new Map();
-  for (const a of Object.values(state.accounts)) {
-    const r = await rpc("account_objects", { account: a.address, type: "directed_offer" });
-    offers.push(...(r.account_objects || []));
-    // A bid is linked from both the buyer's and the seller's directory.
-    const c = await rpc("account_objects", { account: a.address, type: "directed_offer_counter" });
-    for (const b of c.account_objects || []) bids.set(b.index, b);
-  }
-  const live = new Set(offers.map((o) => o.index));
-  const stale = [...bids.values()].filter((b) => !live.has(b.DirectedOfferID));
-  if (!offers.length && !stale.length) return $("offers").replaceChildren("No offers.");
-  const close = (await rpc("ledger", { ledger_index: "validated" })).ledger.close_time;
-  $("offers").replaceChildren(
-    ...offers.map((o) => renderOffer(o, close, [...bids.values()].filter((b) => b.DirectedOfferID === o.index))),
-    ...(stale.length ? [el("div", { class: "offer" },
-      el("div", { class: "offer-head" }, el("b", {}, "Bids on closed offers"), el("span", { class: "muted" }, "anyone may clear these")),
-      ...stale.map((b) => renderBid(b, false)))] : []));
+// ---- buyer desk ----------------------------------------------------------
+
+function renderViewAs() {
+  $("viewAs").replaceChildren(...BUYERS.map((r) => el("option", r === state.viewAs ? { value: r, selected: "" } : { value: r }, ROLES[r].label)));
 }
 
-function renderBid(b, offerLive) {
-  const buyer = state.accounts[nameOf(b.Account)], seller = state.accounts[nameOf(b.Destination)];
-  const total = typeof b.Amount === "string" ? fmt(Number(b.Amount) / 1e6) + " XRP" : fmt(b.Amount.value) + " " + assetOf(b.Amount);
-  const act = (who, type, label, text) => el("button", { class: type === "DirectedOfferAccept" ? "primary" : "", onclick: async () => {
-    await submit({ TransactionType: type, Account: who.address, DirectedOfferCounterID: b.index }, who, label);
-    refresh();
-  } }, text);
-  return el("div", { class: "row bid" },
-    el("span", {}, el("b", {}, buyer.name), ` bids ${total} for ${fmt(valueOf(b.Quantity))} ${assetOf(b.Quantity)}`),
-    offerLive ? act(seller, "DirectedOfferAccept", `${seller.name} takes ${buyer.name}'s bid`, "Take") : "",
-    act(seller, "DirectedOfferCancel", `${seller.name} declines ${buyer.name}'s bid`, offerLive ? "Decline" : "Clear"),
-    act(buyer, "DirectedOfferCancel", `${buyer.name} withdraws the bid`, "Withdraw"),
-    rawDetails("Raw", b));
+function quoteCard(q, role, closeTime, invited) {
+  const expired = q.Expiration && closeTime > q.Expiration;
+  const left = valueOf(q.Amount);
+  const size = el("input", { type: "number", value: Math.min(10, left), min: "1" });
+  const cost = el("span", { class: "muted" });
+  const total = el("input", { type: "number", placeholder: "total", min: "0", step: "any" });
+  const update = () => {
+    const pr = quotePrice(q, Number(size.value));
+    cost.textContent = pr ? `= ${fmt(pr.total)} USD at ${fmt(pr.unit)}` : "below the smallest tier";
+  };
+  size.oninput = update; update();
+  return el("div", { class: "card" },
+    el("div", { class: "row" }, badge("seller"), el("b", {}, `offers ${fmt(left)} BOND`),
+      expired ? el("span", { class: "warn" }, "expired") : "", invited ? "" : el("span", { class: "warn" }, "not addressed to you")),
+    el("div", { class: "row" }, el("span", { class: "muted" }, "Size tiers:"), ...tierText(q)),
+    el("div", { class: "row" }, el("label", {}, "Size", size, "BOND"), cost),
+    el("div", { class: "row" },
+      el("button", { class: "primary", onclick: async () => {
+        await submit(role, { TransactionType: "DirectedOfferAccept", DirectedOfferID: q.index, Quantity: bond(size.value) },
+                     `Lift ${size.value} BOND at the quoted price`);
+        refresh(); } }, "Lift offer"),
+      el("span", { class: "muted" }, "or counter"), total, el("span", {}, "USD"),
+      el("button", { onclick: async () => {
+        await submit(role, { TransactionType: "DirectedOfferCounterCreate", DirectedOfferID: q.index,
+                             Quantity: bond(size.value), Amount: usd(total.value) },
+                     `Counter-bid ${total.value} USD for ${size.value} BOND`);
+        refresh(); } }, "Send counter-bid")));
 }
 
-function renderOffer(o, closeTime, bids) {
-  const sold = assetOf(o.Amount), left = valueOf(o.Amount);
-  const pay = o.PaymentAsset.mpt_issuance_id ? "BOND" : o.PaymentAsset.currency;
-  const buyers = o.Counterparties ? o.Counterparties.map((c) => nameOf(c.CounterpartyEntry.Account)) : [];
-  const expired = o.Expiration && closeTime > o.Expiration;
-  const tierText = o.PriceTiers.map((t) => {
-    const p = t.PriceTier.UnitPrice;
-    const unit = typeof p === "string" ? fmt(Number(p) / 1e6) + " XRP" : fmt(p.value) + " " + assetOf(p);
-    return el("span", { class: "chip" }, `${fmt(valueOf(t.PriceTier.MinQuantity))}+ @ ${unit}`);
-  });
+async function renderBuyer({ quotes, bids, closeTime }) {
+  const role = state.viewAs;
+  const me = acct(role).address;
+  $("buyerAddr").replaceChildren(badge(role), " ", me);
+  const p = await positions(role);
+  const myBids = bids.filter((b) => b.Account === me);
+  const lockedUsd = myBids.reduce((s, b) => s + valueOf(b.Amount), 0);
+  $("buyerPos").replaceChildren(...posCards([["USD available", p.usd], ["USD locked in bids", lockedUsd], ["BOND", p.bond]]));
 
-  const buyer = el("select", {}, ...Object.keys(state.accounts).filter((n) => n !== "gw" && n !== nameOf(o.Account)).map((n) => el("option", {}, n)));
-  const qty = el("input", { type: "number", value: Math.min(5, left), min: "0", step: "any" });
-  const price = el("span", { class: "muted" });
-  const update = () => { const q = quote(o, Number(qty.value)); price.textContent = q ? "≈ " + q.text : "below the first tier"; };
-  qty.oninput = update; update();
+  const invited = quotes.filter((q) => (q.Counterparties || []).some((c) => c.CounterpartyEntry.Account === me));
+  const others = quotes.filter((q) => !invited.includes(q));
+  $("buyerQuotes").replaceChildren(...(invited.length ? invited.map((q) => quoteCard(q, role, closeTime, true)) : ["None."]));
+  $("otherList").replaceChildren(...(others.length ? [
+    el("p", { class: "muted", style: "margin:0 0 8px" }, "Every quote is public on the ledger, but only its counterparties can trade on it. Try it: the ledger refuses."),
+    ...others.map((q) => quoteCard(q, role, closeTime, false))] : ["None."]));
 
-  const acceptBtn = el("button", { class: "primary", onclick: async () => {
-    const b = state.accounts[buyer.value];
-    await submit({ TransactionType: "DirectedOfferAccept", Account: b.address, DirectedOfferID: o.index, Quantity: amount(sold, qty.value) },
-                 b, `${b.name} buys ${qty.value} ${sold} from ${nameOf(o.Account)}`);
-    refresh();
-  } }, "Accept");
-  const bidTotal = el("input", { type: "number", value: "", min: "0", step: "any", placeholder: "total" });
-  const bidBtn = el("button", { onclick: async () => {
-    const b = state.accounts[buyer.value];
-    await submit({ TransactionType: "DirectedOfferCounterCreate", Account: b.address, DirectedOfferID: o.index,
-                   Quantity: amount(sold, qty.value), Amount: amount(pay, bidTotal.value) },
-                 b, `${b.name} bids ${bidTotal.value} ${pay} for ${qty.value} ${sold}`);
-    refresh();
-  } }, "Bid");
-  const canceller = el("select", {}, ...Object.keys(state.accounts).filter((n) => n !== "gw").map((n) => el("option", n === nameOf(o.Account) ? { selected: "" } : {}, n)));
-  const cancelBtn = el("button", { onclick: async () => {
-    const a = state.accounts[canceller.value];
-    await submit({ TransactionType: "DirectedOfferCancel", Account: a.address, DirectedOfferID: o.index }, a, `${a.name} cancels ${nameOf(o.Account)}'s offer`);
-    refresh();
-  } }, "Cancel");
-
-  return el("div", { class: "offer" },
-    el("div", { class: "offer-head" },
-      el("span", {}, el("b", {}, nameOf(o.Account)), ` sells ${fmt(left)} ${sold} for ${pay}`,
-        expired ? el("span", { class: "warn" }, " · expired") : ""),
-      el("span", { class: "mono muted" }, o.index.slice(0, 16) + "…")),
-    el("div", { class: "row" }, el("span", { class: "muted" }, "Tiers:"), ...tierText),
-    el("div", { class: "row" }, el("span", { class: "muted" }, "Buyers:"),
-      ...(buyers.length ? buyers.map((b) => el("span", { class: "chip" }, b)) : [el("span", { class: "chip" }, "domain " + (o.DomainID || "").slice(0, 8))])),
-    el("div", { class: "row" }, buyer, qty, el("span", {}, sold), price, acceptBtn, el("span", { class: "muted" }, "or bid"), bidTotal, el("span", {}, pay), bidBtn),
-    el("div", { class: "row" }, canceller, cancelBtn),
-    ...bids.map((b) => renderBid(b, true)),
-    rawDetails("Raw ledger entry", o));
+  const live = new Set(quotes.map((q) => q.index));
+  $("buyerBids").replaceChildren(...(myBids.length ? myBids.map((b) => el("div", { class: "card" },
+    el("div", { class: "row" }, `${fmt(valueOf(b.Amount))} USD for ${fmt(valueOf(b.Quantity))} BOND`,
+      el("span", { class: live.has(b.DirectedOfferID) ? "muted" : "warn" }, live.has(b.DirectedOfferID) ? "waiting for the seller" : "quote closed")),
+    el("div", { class: "row" }, el("button", { onclick: async () => {
+      await submit(role, { TransactionType: "DirectedOfferCancel", DirectedOfferCounterID: b.index }, "Withdraw counter-bid; locked USD returns");
+      refresh(); } }, "Withdraw")),
+    rawDetails("Raw ledger entry", b))) : ["None."]));
 }
 
 // ---- wire up -------------------------------------------------------------
 
-$("closeBtn").onclick = async () => { await closeLedger(); log("Ledger closed."); refresh(); };
+$("closeBtn").onclick = async () => { await closeLedger(); refresh(); };
 $("setupBtn").onclick = setup;
 $("showRaw").onchange = () => document.querySelectorAll("details.raw").forEach((d) => (d.open = $("showRaw").checked));
-$("createBtn").onclick = createOffer;
-$("addTier").onclick = () => { const last = tiers.at(-1) || [0, 1]; tiers.push([last[0] + 10, last[1]]); renderForm(); };
-for (const id of ["cSeller", "cSold", "cPay"]) $(id).onchange = renderForm;
+$("sendQuote").onclick = sendQuote;
+$("addTier").onclick = () => { const last = tiers.at(-1) || [0, 1]; tiers.push([last[0] + 10, last[1]]); renderQuoteForm(); };
+$("viewAs").onchange = () => { state.viewAs = $("viewAs").value; save(); refresh(); };
 connect();
 </script>
 </body>
