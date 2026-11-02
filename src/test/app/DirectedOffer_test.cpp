@@ -190,20 +190,26 @@ class DirectedOffer_test : public beast::unit_test::Suite
         env(accept(s.bob, offerID, s.usd(5)));
         env.close();
         env.require(Balance(s.bob, s.usd(5)));
-        BEAST_EXPECT(xrpBalance(env, s.bob) == bobXrp - XRP(50).value().xrp() - fee);
+        BEAST_EXPECTS(
+            xrpBalance(env, s.bob) == bobXrp - XRP(50).value().xrp() - fee,
+            to_string(xrpBalance(env, s.bob)));
 
         // 20 falls in the third tier, priced as a whole: 20 x 8 XRP.
         auto const carolXrp = xrpBalance(env, s.carol);
         env(accept(s.carol, offerID, s.usd(20)));
         env.close();
         env.require(Balance(s.carol, s.usd(20)));
-        BEAST_EXPECT(xrpBalance(env, s.carol) == carolXrp - XRP(160).value().xrp() - fee);
-        BEAST_EXPECT(xrpBalance(env, s.alice) == aliceXrp + XRP(210).value().xrp());
+        BEAST_EXPECTS(
+            xrpBalance(env, s.carol) == carolXrp - XRP(160).value().xrp() - fee,
+            to_string(xrpBalance(env, s.carol)));
+        BEAST_EXPECTS(
+            xrpBalance(env, s.alice) == aliceXrp + XRP(210).value().xrp(),
+            to_string(xrpBalance(env, s.alice)));
 
         auto const sle = env.le(offerKeylet);
         if (!BEAST_EXPECT(sle))
             return;
-        BEAST_EXPECT((*sle)[sfAmount] == s.usd(5).value());
+        BEAST_EXPECTS(sle->at(sfAmount) == s.usd(5).value(), sle->at(sfAmount).getFullText());
 
         // Not a named buyer, the seller itself, more than remains, below the
         // first tier, the wrong asset.
@@ -275,12 +281,12 @@ class DirectedOffer_test : public beast::unit_test::Suite
         env(create(alice, mpt(100), usd.issue(), {{mpt(1), usd(2)}, {mpt(50), usd(1.5)}}),
             Counterparties({bob}));
         env.close();
-        BEAST_EXPECT(mptGw.getBalance(alice) == 900);
+        BEAST_EXPECTS(mptGw.getBalance(alice) == 900, std::to_string(mptGw.getBalance(alice)));
 
         // 60 falls in the second tier: 60 x 1.5 USD.
         env(accept(bob, keylet(alice, seq).key, mpt(60)));
         env.close();
-        BEAST_EXPECT(mptGw.getBalance(bob) == 60);
+        BEAST_EXPECTS(mptGw.getBalance(bob) == 60, std::to_string(mptGw.getBalance(bob)));
         env.require(Balance(bob, usd(410)));
         env.require(Balance(alice, usd(90)));
 
@@ -288,7 +294,7 @@ class DirectedOffer_test : public beast::unit_test::Suite
         env(cancel(alice, keylet(alice, seq).key));
         env.close();
         BEAST_EXPECT(!env.le(keylet(alice, seq)));
-        BEAST_EXPECT(mptGw.getBalance(alice) == 940);
+        BEAST_EXPECTS(mptGw.getBalance(alice) == 940, std::to_string(mptGw.getBalance(alice)));
     }
 
     void
@@ -317,8 +323,8 @@ class DirectedOffer_test : public beast::unit_test::Suite
         env(accept(s.bob, keylet(s.alice, seq).key, s.usd(4)));
         env.close();
         env.require(Balance(s.bob, s.usd(4)));
-        BEAST_EXPECT(mptGw.getBalance(s.bob) == 972);
-        BEAST_EXPECT(mptGw.getBalance(s.alice) == 28);
+        BEAST_EXPECTS(mptGw.getBalance(s.bob) == 972, std::to_string(mptGw.getBalance(s.bob)));
+        BEAST_EXPECTS(mptGw.getBalance(s.alice) == 28, std::to_string(mptGw.getBalance(s.alice)));
     }
 
     void
@@ -413,7 +419,7 @@ class DirectedOffer_test : public beast::unit_test::Suite
             mptGw.set({.account = gw, .holder = alice, .flags = tfMPTLock});
             env(accept(bob, keylet(alice, seq).key, mpt(1)), Ter(tecLOCKED));
             env.close();
-            BEAST_EXPECT(mptGw.getBalance(bob) == 0);
+            BEAST_EXPECTS(mptGw.getBalance(bob) == 0, std::to_string(mptGw.getBalance(bob)));
         }
     }
 
@@ -557,8 +563,10 @@ class DirectedOffer_test : public beast::unit_test::Suite
         env(accept(s.carol, offerID, s.usd(3)), delegate::As(s.dave));
         env.close();
         env.require(Balance(s.carol, s.usd(3)));
-        BEAST_EXPECT(xrpBalance(env, s.carol) == carolXrp - XRP(30).value().xrp());
-        BEAST_EXPECT(xrpBalance(env, s.dave) == daveXrp - fee);
+        BEAST_EXPECTS(
+            xrpBalance(env, s.carol) == carolXrp - XRP(30).value().xrp(),
+            to_string(xrpBalance(env, s.carol)));
+        BEAST_EXPECTS(xrpBalance(env, s.dave) == daveXrp - fee, to_string(xrpBalance(env, s.dave)));
     }
 
     void
@@ -601,7 +609,7 @@ class DirectedOffer_test : public beast::unit_test::Suite
             auto const sle = env.le(offer1);
             if (!BEAST_EXPECT(sle))
                 return;
-            BEAST_EXPECT((*sle)[sfAmount] == s.usd(5).value());
+            BEAST_EXPECTS(sle->at(sfAmount) == s.usd(5).value(), sle->at(sfAmount).getFullText());
         }
     }
 
@@ -625,7 +633,9 @@ class DirectedOffer_test : public beast::unit_test::Suite
         auto const sle = env.le(keylet(s.alice, seq));
         if (!BEAST_EXPECT(sle))
             return;
-        BEAST_EXPECT((*sle)[~sfSponsor] == s.carol.id());
+        BEAST_EXPECTS(
+            sle->at(~sfSponsor) == s.carol.id(),
+            to_string(sle->at(~sfSponsor).value_or(AccountID{})));
 
         env(cancel(s.alice, keylet(s.alice, seq).key));
         env.close();

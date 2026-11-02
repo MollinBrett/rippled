@@ -2,6 +2,7 @@
 
 #include <xrpl/basics/Log.h>
 #include <xrpl/beast/utility/Zero.h>
+#include <xrpl/beast/utility/instrumentation.h>
 #include <xrpl/ledger/ApplyView.h>
 #include <xrpl/ledger/ReadView.h>
 #include <xrpl/ledger/View.h>
@@ -86,69 +87,117 @@ DirectedOfferCreate::preflight(PreflightContext const& ctx)
 {
     STAmount const amount = ctx.tx[sfAmount];
     if (!isValidOfferAmount(amount))
+    {
+        JLOG(ctx.j.debug()) << "Malformed transaction: bad amount " << amount.getFullText();
         return temBAD_AMOUNT;
+    }
 
     Asset const paymentAsset = ctx.tx[sfPaymentAsset];
     if (paymentAsset == amount.asset())
+    {
+        JLOG(ctx.j.debug()) << "Malformed transaction: payment asset is the sold asset.";
         return temBAD_AMOUNT;
+    }
 
     if (paymentAsset.holds<Issue>() && !isXRP(paymentAsset) &&
         paymentAsset.get<Issue>().currency == badCurrency())
+    {
+        JLOG(ctx.j.debug()) << "Malformed transaction: bad payment currency.";
         return temBAD_CURRENCY;
+    }
 
     auto const& tiers = ctx.tx.getFieldArray(sfPriceTiers);
     if (tiers.empty() || tiers.size() > kMaxDirectedOfferTiers)
+    {
+        JLOG(ctx.j.debug()) << "Malformed transaction: " << tiers.size() << " price tiers.";
         return temMALFORMED;
+    }
 
     std::optional<STAmount> previousMin;
     for (auto const& tier : tiers)
     {
         if (tier.getFName() != sfPriceTier)
+        {
+            JLOG(ctx.j.debug()) << "Malformed transaction: price tier is not a PriceTier.";
             return temMALFORMED;
+        }
 
         STAmount const minQuantity = tier[sfMinQuantity];
         STAmount const unitPrice = tier[sfUnitPrice];
 
         if (minQuantity.asset() != amount.asset() || !isValidOfferAmount(minQuantity) ||
             minQuantity > amount)
+        {
+            JLOG(ctx.j.debug()) << "Malformed transaction: bad tier quantity "
+                                << minQuantity.getFullText();
             return temBAD_AMOUNT;
+        }
 
         if (unitPrice.asset() != paymentAsset || !isValidOfferAmount(unitPrice))
+        {
+            JLOG(ctx.j.debug()) << "Malformed transaction: bad tier price "
+                                << unitPrice.getFullText();
             return temBAD_AMOUNT;
+        }
 
         if (previousMin && minQuantity <= *previousMin)
+        {
+            JLOG(ctx.j.debug()) << "Malformed transaction: tier quantities not increasing.";
             return temMALFORMED;
+        }
         previousMin = minQuantity;
     }
 
+    auto const domainID = ctx.tx[~sfDomainID];
     bool const hasCounterparties = ctx.tx.isFieldPresent(sfCounterparties);
-    bool const hasDomain = ctx.tx.isFieldPresent(sfDomainID);
-    if (hasCounterparties == hasDomain)
+    if (hasCounterparties == static_cast<bool>(domainID))
+    {
+        JLOG(ctx.j.debug()) << "Malformed transaction: needs exactly one of Counterparties "
+                               "and DomainID.";
         return temMALFORMED;
+    }
 
     if (hasCounterparties)
     {
         auto const& counterparties = ctx.tx.getFieldArray(sfCounterparties);
         if (counterparties.empty() || counterparties.size() > kMaxDirectedOfferCounterparties)
+        {
+            JLOG(ctx.j.debug()) << "Malformed transaction: " << counterparties.size()
+                                << " counterparties.";
             return temMALFORMED;
+        }
 
         std::set<AccountID> seen;
         for (auto const& counterparty : counterparties)
         {
             if (counterparty.getFName() != sfCounterpartyEntry)
+            {
+                JLOG(ctx.j.debug())
+                    << "Malformed transaction: counterparty is not a CounterpartyEntry.";
                 return temMALFORMED;
+            }
 
             AccountID const account = counterparty[sfAccount];
             if (account == ctx.tx[sfAccount] || !seen.insert(account).second)
+            {
+                JLOG(ctx.j.debug())
+                    << "Malformed transaction: counterparty is the seller or repeated.";
                 return temMALFORMED;
+            }
         }
     }
 
-    if (hasDomain && ctx.tx[sfDomainID] == beast::kZero)
+    if (domainID && *domainID == beast::kZero)
+    {
+        JLOG(ctx.j.debug()) << "Malformed transaction: zero DomainID.";
         return temMALFORMED;
+    }
 
     if (auto const expiration = ctx.tx[~sfExpiration]; expiration && *expiration == 0)
+    {
+        JLOG(ctx.j.debug()) << "Malformed transaction: zero Expiration.";
         return temBAD_EXPIRATION;
+    }
 
     return tesSUCCESS;
 }
@@ -161,19 +210,22 @@ DirectedOfferCreate::preclaim(PreclaimContext const& ctx)
     Asset const paymentAsset = ctx.tx[sfPaymentAsset];
 
     if (hasExpired(ctx.view, ctx.tx[~sfExpiration]))
+    {
+        JLOG(ctx.j.debug()) << "Offer would already be expired.";
         return tecEXPIRED;
+    }
 
     // The sold asset is locked under the same issuer controls as a token
     // escrow, with the seller standing in for the destination.
     if (!isXRP(amount))
     {
-        if (auto const ret = std::visit(
-                [&]<typename T>(T const&) {
+        if (auto const ter = std::visit(
+                [&]<class T>(T const&) {
                     return escrowLockPreclaimHelper<T>(ctx.view, account, account, amount, ctx.j);
                 },
                 amount.asset().value());
-            !isTesSuccess(ret))
-            return ret;
+            !isTesSuccess(ter))
+            return ter;
     }
 
     // The seller must be able to receive the payment asset.
@@ -183,34 +235,45 @@ DirectedOfferCreate::preclaim(PreclaimContext const& ctx)
         {
             auto const& issue = paymentAsset.get<Issue>();
             if (!ctx.view.exists(keylet::trustLine(account, issue.account, issue.currency)))
+            {
+                JLOG(ctx.j.debug()) << "Seller has no trust line for the payment asset.";
                 return tecNO_LINE;
+            }
         }
         else
         {
             auto const& mptIssue = paymentAsset.get<MPTIssue>();
-            if (!ctx.view.exists(keylet::mptokenIssuance(mptIssue.getMptID())))
+            if (!ctx.view.exists(keylet::mptokenIssuance(mptIssue.getMptID())) ||
+                !ctx.view.exists(keylet::mptoken(mptIssue.getMptID(), account)))
+            {
+                JLOG(ctx.j.debug()) << "Seller cannot hold the payment MPT.";
                 return tecOBJECT_NOT_FOUND;
-            if (!ctx.view.exists(keylet::mptoken(mptIssue.getMptID(), account)))
-                return tecOBJECT_NOT_FOUND;
+            }
         }
 
-        if (auto const ret = requireAuth(ctx.view, paymentAsset, account); !isTesSuccess(ret))
-            return ret;
+        if (auto const ter = requireAuth(ctx.view, paymentAsset, account); !isTesSuccess(ter))
+            return ter;
 
-        if (auto const ret = checkFrozen(ctx.view, account, paymentAsset); !isTesSuccess(ret))
-            return ret;
+        if (auto const ter = checkFrozen(ctx.view, account, paymentAsset); !isTesSuccess(ter))
+            return ter;
     }
 
     if (auto const domainID = ctx.tx[~sfDomainID];
         domainID && !ctx.view.exists(keylet::permissionedDomain(*domainID)))
+    {
+        JLOG(ctx.j.debug()) << "Permissioned domain does not exist.";
         return tecOBJECT_NOT_FOUND;
+    }
 
     if (ctx.tx.isFieldPresent(sfCounterparties))
     {
         for (auto const& counterparty : ctx.tx.getFieldArray(sfCounterparties))
         {
             if (!ctx.view.exists(keylet::account(counterparty[sfAccount])))
+            {
+                JLOG(ctx.j.debug()) << "Counterparty account does not exist.";
                 return tecNO_TARGET;
+            }
         }
     }
 
@@ -220,58 +283,67 @@ DirectedOfferCreate::preclaim(PreclaimContext const& ctx)
 TER
 DirectedOfferCreate::doApply()
 {
-    auto const sle = ctx_.view().peek(keylet::account(accountID_));
+    auto const sle = view().peek(keylet::account(accountID_));
     if (!sle)
-        return tefINTERNAL;  // LCOV_EXCL_LINE
+    {
+        // LCOV_EXCL_START
+        UNREACHABLE("xrpl::DirectedOfferCreate::doApply : the submitting account exists");
+        return tefINTERNAL;
+        // LCOV_EXCL_STOP
+    }
 
     STAmount const amount = ctx_.tx[sfAmount];
-    auto const balance = sle->getFieldAmount(sfBalance).xrp();
+    auto const balance = sle->at(sfBalance).value().xrp();
 
     // Whoever pays for the new owner increment, the seller or a reserve
     // sponsor, must be able to cover it.
-    if (auto const ret =
+    if (auto const ter =
             checkReserve(ctx_.getApplyViewContext(), sle, balance, {.ownerCountDelta = 1}, j_);
-        !isTesSuccess(ret))
-        return ret;
+        !isTesSuccess(ter))
+        return ter;
 
     // Locking XRP must leave the seller above its own reserve, which a
     // sponsor never covers.
     if (isXRP(amount))
     {
         auto const sellerReserve = accountReserve(
-            ctx_.view(), sle, j_, {.ownerCountDelta = getTxReserveSponsorID(ctx_.tx) ? 0 : 1});
+            view(), sle, j_, {.ownerCountDelta = getTxReserveSponsorID(ctx_.tx) ? 0 : 1});
         if (balance - amount.xrp() < sellerReserve)
+        {
+            JLOG(j_.debug()) << "Locking the XRP would leave the seller below its reserve.";
             return tecUNFUNDED;
+        }
     }
 
-    DirectedOfferEntryW offer(accountID_, ctx_.tx.getSeqProxy(), ctx_.view(), j_);
+    DirectedOfferEntryW offer(accountID_, ctx_.tx.getSeqProxy(), view(), j_);
     Keylet const offerKeylet = offer.keylet();
     offer.newSLE();
-    (*offer)[sfAccount] = accountID_;
-    (*offer)[sfSequence] = ctx_.tx.getSeqProxy().value();
-    (*offer)[sfAmount] = amount;
+    offer->at(sfAccount) = accountID_;
+    offer->at(sfSequence) = ctx_.tx.getSeqProxy().value();
+    offer->at(sfAmount) = amount;
+    // An Issue field has no working proxy assignment, so it is set directly.
     offer->setFieldIssue(sfPaymentAsset, STIssue{sfPaymentAsset, ctx_.tx[sfPaymentAsset]});
     offer->setFieldArray(sfPriceTiers, ctx_.tx.getFieldArray(sfPriceTiers));
     if (ctx_.tx.isFieldPresent(sfCounterparties))
         offer->setFieldArray(sfCounterparties, ctx_.tx.getFieldArray(sfCounterparties));
-    (*offer)[~sfDomainID] = ctx_.tx[~sfDomainID];
-    (*offer)[~sfExpiration] = ctx_.tx[~sfExpiration];
+    offer->at(~sfDomainID) = ctx_.tx[~sfDomainID];
+    offer->at(~sfExpiration) = ctx_.tx[~sfExpiration];
 
     if (!isXRP(amount))
     {
-        auto const xferRate = transferRate(ctx_.view(), amount);
+        auto const xferRate = transferRate(view(), amount);
         if (xferRate != kParityRate)
-            (*offer)[sfTransferRate] = xferRate.value;
+            offer->at(sfTransferRate) = xferRate.value;
     }
 
     offer.insert();
 
     {
-        auto const page = ctx_.view().dirInsert(
+        auto const page = view().dirInsert(
             keylet::ownerDir(accountID_), offerKeylet, describeOwnerDir(accountID_));
         if (!page)
             return tecDIR_FULL;  // LCOV_EXCL_LINE
-        (*offer)[sfOwnerNode] = *page;
+        offer->at(sfOwnerNode) = *page;
     }
 
     // As with token escrow, a locked IOU is linked from the issuer's directory
@@ -281,30 +353,30 @@ DirectedOfferCreate::doApply()
     if (!isXRP(amount) && amount.holds<Issue>())
     {
         auto const page =
-            ctx_.view().dirInsert(keylet::ownerDir(issuer), offerKeylet, describeOwnerDir(issuer));
+            view().dirInsert(keylet::ownerDir(issuer), offerKeylet, describeOwnerDir(issuer));
         if (!page)
             return tecDIR_FULL;  // LCOV_EXCL_LINE
-        (*offer)[sfIssuerNode] = *page;
+        offer->at(sfIssuerNode) = *page;
     }
 
     if (isXRP(amount))
     {
-        (*sle)[sfBalance] = (*sle)[sfBalance] - amount;
+        sle->at(sfBalance) -= amount;
     }
     else if (
-        auto const ret = std::visit(
-            [&]<typename T>(T const&) {
-                return escrowLockApplyHelper<T>(ctx_.view(), issuer, accountID_, amount, j_);
+        auto const ter = std::visit(
+            [&]<class T>(T const&) {
+                return escrowLockApplyHelper<T>(view(), issuer, accountID_, amount, j_);
             },
             amount.asset().value());
-        !isTesSuccess(ret))
+        !isTesSuccess(ter))
     {
-        return ret;  // LCOV_EXCL_LINE
+        return ter;  // LCOV_EXCL_LINE
     }
 
     increaseOwnerCount(ctx_.getApplyViewContext(), sle, 1, j_);
     addSponsorToLedgerEntry(ctx_.getApplyViewContext(), offer.mutableRawSle());
-    ctx_.view().update(sle);
+    view().update(sle);
     return tesSUCCESS;
 }
 

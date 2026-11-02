@@ -2,6 +2,7 @@
 
 #include <xrpl/basics/Log.h>
 #include <xrpl/beast/utility/Zero.h>
+#include <xrpl/beast/utility/instrumentation.h>
 #include <xrpl/ledger/ApplyView.h>
 #include <xrpl/ledger/ReadView.h>
 #include <xrpl/ledger/View.h>
@@ -26,7 +27,10 @@ NotTEC
 DirectedOfferCancel::preflight(PreflightContext const& ctx)
 {
     if (ctx.tx[sfDirectedOfferID] == beast::kZero)
+    {
+        JLOG(ctx.j.debug()) << "Malformed transaction: zero DirectedOfferID.";
         return temMALFORMED;
+    }
 
     return tesSUCCESS;
 }
@@ -36,12 +40,19 @@ DirectedOfferCancel::preclaim(PreclaimContext const& ctx)
 {
     DirectedOfferEntryR const offer(ctx.tx[sfDirectedOfferID], ctx.view);
     if (!offer)
+    {
+        JLOG(ctx.j.debug()) << "DirectedOffer does not exist.";
         return tecNO_ENTRY;
+    }
 
     // Before it expires only the seller may cancel; afterwards anyone may,
     // so an expired offer never strands the seller's asset.
-    if (ctx.tx[sfAccount] != (*offer)[sfAccount] && !hasExpired(ctx.view, (*offer)[~sfExpiration]))
+    if (ctx.tx[sfAccount] != offer->at(sfAccount) &&
+        !hasExpired(ctx.view, offer->at(~sfExpiration)))
+    {
+        JLOG(ctx.j.debug()) << "Only the seller may cancel an offer that has not expired.";
         return tecNO_PERMISSION;
+    }
 
     return tesSUCCESS;
 }
@@ -51,9 +62,14 @@ DirectedOfferCancel::doApply()
 {
     DirectedOfferEntryW offer(ctx_.tx[sfDirectedOfferID], view(), j_);
     if (!offer)
-        return tecNO_ENTRY;  // LCOV_EXCL_LINE
+    {
+        // LCOV_EXCL_START
+        UNREACHABLE("xrpl::DirectedOfferCancel::doApply : preclaim found the offer");
+        return tecINTERNAL;
+        // LCOV_EXCL_STOP
+    }
 
-    bool const createAsset = (*offer)[sfAccount] == accountID_;
+    bool const createAsset = offer->at(sfAccount) == accountID_;
     return closeDirectedOffer(
         ctx_.getApplyViewContext(), offer.mutableRawSle(), preFeeBalance_, createAsset, j_);
 }

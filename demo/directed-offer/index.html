@@ -47,8 +47,12 @@
   .ok { color: var(--ok); } .bad { color: var(--bad); } .warn { color: var(--warn); }
   .offer { border: 1px solid var(--line); border-radius: 8px; padding: 10px; margin-bottom: 10px; }
   .offer-head { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px; margin-bottom: 6px; }
-  #log { max-height: 280px; overflow: auto; margin: 0; padding: 0; list-style: none; }
+  #log { max-height: 520px; overflow: auto; margin: 0; padding: 0; list-style: none; }
   #log li { padding: 4px 0; border-bottom: 1px solid var(--line); }
+  summary { cursor: pointer; }
+  pre.raw { margin: 6px 0 2px; padding: 8px; background: var(--chip); border-radius: 6px; color: var(--text);
+            font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre-wrap; word-break: break-all;
+            max-height: 360px; overflow: auto; }
   .tiers td, .tiers th { padding: 3px 6px; }
   @media (max-width: 800px) { main { grid-template-columns: minmax(0, 1fr); padding: 16px; } }
 </style>
@@ -60,6 +64,7 @@
   <span class="status">ledger <b id="ledger">–</b></span>
   <button id="closeBtn" title="ledger_accept">Close ledger</button>
   <label class="status"><input type="checkbox" id="autoClose" checked> close after each transaction</label>
+  <label class="status"><input type="checkbox" id="showRaw"> expand raw JSON</label>
   <button id="setupBtn" class="primary">Set up demo accounts</button>
 </header>
 
@@ -150,16 +155,32 @@ function rpc(command, params = {}) {
 
 async function closeLedger() { await rpc("ledger_accept"); await refreshLedger(); }
 
-function log(text, cls = "") {
-  $("log").prepend(el("li", { class: cls }, text));
+// A log line; with raw data it expands to show the JSON exchanged with the node.
+function log(text, cls = "", raw = null) {
+  if (!raw) return $("log").prepend(el("li", { class: cls }, text));
+  $("log").prepend(el("li", { class: cls }, rawDetails(text, raw)));
+}
+
+function rawDetails(summary, raw) {
+  const d = el("details", { class: "raw" }, el("summary", {}, summary), el("pre", { class: "raw" }, JSON.stringify(raw, null, 2)));
+  d.open = $("showRaw").checked;
+  return d;
 }
 
 async function submit(tx, who, label) {
   const res = await rpc("submit", { tx_json: tx, secret: who.secret });
   const code = res.engine_result || res.error || "error";
   const good = code === "tesSUCCESS";
-  log(`${label}: ${code}${good ? "" : " — " + (res.engine_result_message || res.error_message || "")}`, good ? "ok" : "bad");
-  if ($("autoClose").checked) await closeLedger();
+  const raw = { request: tx, response: res };
+  if ($("autoClose").checked) {
+    await closeLedger();
+    // Once the ledger closes, the node has the final result and metadata.
+    if (res.tx_json?.hash) {
+      const final = await rpc("tx", { transaction: res.tx_json.hash });
+      raw.validated = { result: final.meta?.TransactionResult, ledger_index: final.ledger_index, meta: final.meta };
+    }
+  }
+  log(`${label}: ${code}${good ? "" : " — " + (res.engine_result_message || res.error_message || "")}`, good ? "ok" : "bad", raw);
   return res;
 }
 
@@ -390,13 +411,15 @@ function renderOffer(o, closeTime) {
     el("div", { class: "row" }, el("span", { class: "muted" }, "Tiers:"), ...tierText),
     el("div", { class: "row" }, el("span", { class: "muted" }, "Buyers:"),
       ...(buyers.length ? buyers.map((b) => el("span", { class: "chip" }, b)) : [el("span", { class: "chip" }, "domain " + (o.DomainID || "").slice(0, 8))])),
-    el("div", { class: "row" }, buyer, qty, el("span", {}, sold), price, acceptBtn, el("span", { class: "muted" }, "|"), canceller, cancelBtn));
+    el("div", { class: "row" }, buyer, qty, el("span", {}, sold), price, acceptBtn, el("span", { class: "muted" }, "|"), canceller, cancelBtn),
+    rawDetails("Raw ledger entry", o));
 }
 
 // ---- wire up -------------------------------------------------------------
 
 $("closeBtn").onclick = async () => { await closeLedger(); log("Ledger closed."); refresh(); };
 $("setupBtn").onclick = setup;
+$("showRaw").onchange = () => document.querySelectorAll("details.raw").forEach((d) => (d.open = $("showRaw").checked));
 $("createBtn").onclick = createOffer;
 $("addTier").onclick = () => { const last = tiers.at(-1) || [0, 1]; tiers.push([last[0] + 10, last[1]]); renderForm(); };
 for (const id of ["cSeller", "cSold", "cPay"]) $(id).onchange = renderForm;

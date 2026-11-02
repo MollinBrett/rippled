@@ -2,6 +2,7 @@
 
 #include <xrpl/basics/Log.h>
 #include <xrpl/beast/utility/Zero.h>
+#include <xrpl/beast/utility/instrumentation.h>
 #include <xrpl/ledger/helpers/AccountRootHelpers.h>
 #include <xrpl/ledger/helpers/EscrowHelpers.h>
 #include <xrpl/ledger/helpers/PermissionedDEXHelpers.h>
@@ -36,7 +37,7 @@ directedOfferPrice(STArray const& tiers, STAmount const& quantity, Asset const& 
     if (tier == nullptr)
         return std::nullopt;
 
-    return mulRound(quantity, (*tier)[sfUnitPrice], paymentAsset, true);
+    return mulRound(quantity, tier->at(sfUnitPrice), paymentAsset, true);
 }
 
 bool
@@ -50,10 +51,13 @@ isDirectedOfferBuyer(ReadView const& view, SLE const& offer, AccountID const& ac
         });
     }
 
-    if (auto const domainID = offer[~sfDomainID])
+    if (auto const domainID = offer.at(~sfDomainID))
         return permissioned_dex::accountInDomain(view, account, *domainID);
 
-    return false;  // LCOV_EXCL_LINE
+    // LCOV_EXCL_START
+    UNREACHABLE("xrpl::isDirectedOfferBuyer : preflight requires Counterparties or DomainID");
+    return false;
+    // LCOV_EXCL_STOP
 }
 
 TER
@@ -64,12 +68,17 @@ closeDirectedOffer(
     bool createAsset,
     beast::Journal j)
 {
-    AccountID const owner = (*offer)[sfAccount];
+    AccountID const owner = offer->at(sfAccount);
     auto const sleOwner = ctx.view.peek(keylet::account(owner));
     if (!sleOwner)
-        return tefINTERNAL;  // LCOV_EXCL_LINE
+    {
+        // LCOV_EXCL_START
+        UNREACHABLE("xrpl::closeDirectedOffer : the offer's owner exists");
+        return tefINTERNAL;
+        // LCOV_EXCL_STOP
+    }
 
-    if (!ctx.view.dirRemove(keylet::ownerDir(owner), (*offer)[sfOwnerNode], offer->key(), true))
+    if (!ctx.view.dirRemove(keylet::ownerDir(owner), offer->at(sfOwnerNode), offer->key(), true))
     {
         // LCOV_EXCL_START
         JLOG(j.fatal()) << "Unable to remove DirectedOffer from owner directory.";
@@ -77,10 +86,10 @@ closeDirectedOffer(
         // LCOV_EXCL_STOP
     }
 
-    STAmount const amount = (*offer)[sfAmount];
+    STAmount const amount = offer->at(sfAmount);
     AccountID const issuer = amount.getIssuer();
 
-    if (auto const page = (*offer)[~sfIssuerNode])
+    if (auto const page = offer->at(~sfIssuerNode))
     {
         if (!ctx.view.dirRemove(keylet::ownerDir(issuer), *page, offer->key(), true))
         {
@@ -99,11 +108,11 @@ closeDirectedOffer(
     {
         if (isXRP(amount))
         {
-            (*sleOwner)[sfBalance] = (*sleOwner)[sfBalance] + amount;
+            sleOwner->at(sfBalance) += amount;
         }
         else if (
-            auto const ret = std::visit(
-                [&]<typename T>(T const&) {
+            auto const ter = std::visit(
+                [&]<class T>(T const&) {
                     return escrowUnlockApplyHelper<T>(
                         ctx,
                         kParityRate,
@@ -117,9 +126,9 @@ closeDirectedOffer(
                         j);
                 },
                 amount.asset().value());
-            !isTesSuccess(ret))
+            !isTesSuccess(ter))
         {
-            return ret;
+            return ter;
         }
     }
 
