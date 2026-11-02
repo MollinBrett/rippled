@@ -88,7 +88,7 @@
   <h1>Directed quotes · delivery versus payment</h1>
   <span class="status" id="conn">connecting…</span>
   <button id="setupBtn" class="primary">Set up market</button>
-  <span class="status">Issuer issues BOND (MPT) and USD (stablecoin) · the seller holds bonds · buyers hold USD</span>
+  <span class="status">ACME 4.25% 2031 bonds, $1,000 face each, priced in % of face · settled against USD stablecoin</span>
 </header>
 
 <main>
@@ -101,9 +101,9 @@
 
       <h3>New directed quote</h3>
       <div class="card">
-        <div class="row"><label>Size <input type="number" id="qSize" value="50" min="1"> BOND</label>
-          <span class="muted">priced in USD</span></div>
-        <table id="tiers"><thead><tr><th>From size</th><th>Price per bond</th><th></th></tr></thead><tbody></tbody></table>
+        <div class="row"><label>Size <input type="number" id="qSize" value="2000" min="1"> bonds</label>
+          <span class="muted" id="qFace"></span></div>
+        <table id="tiers"><thead><tr><th>From size</th><th>Price (% of face)</th><th></th></tr></thead><tbody></tbody></table>
         <div class="row" style="margin-top:6px"><button id="addTier">Add size tier</button></div>
         <div class="row"><span class="muted">Counterparties:</span><span id="qBuyers"></span></div>
         <div class="row"><label>Good for <input type="number" id="qExpire" placeholder="until pulled" min="1" style="width:120px"> seconds</label></div>
@@ -219,7 +219,20 @@ function badge(role) {
 function usd(value) { return { currency: "USD", issuer: acct("issuer").address, value: String(value) }; }
 function bond(value) { return { mpt_issuance_id: state.issuance, value: String(value) }; }
 function valueOf(amt) { return typeof amt === "string" ? Number(amt) / 1e6 : Number(amt.value); }
-function fmt(n) { return Number(n).toLocaleString(undefined, { maximumFractionDigits: 4 }); }
+function fmt(n) { return Number(n).toLocaleString(undefined, { maximumFractionDigits: 2 }); }
+
+// One token is one bond of $1,000 face value. Bonds are priced in percent of
+// face; the ledger stores the unit price in USD per bond.
+const BOND_NAME = "ACME 4.25% 2031";
+const FACE = 1000;
+const toUsdPerBond = (pct) => Math.round(pct * FACE * 100) / 10000;
+const toPct = (usdPerBond) => (usdPerBond * 100) / FACE;
+function px(usdPerBond) { return toPct(usdPerBond).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 3 }); }
+function face(bonds) {
+  const v = bonds * FACE;
+  return v >= 1e6 ? `$${fmt(v / 1e6)}MM` : `$${fmt(v / 1e3)}k`;
+}
+const bondsText = (n) => `${fmt(n)} bonds (${face(n)} face)`;
 function signed(n) { return (n > 0 ? "+" : "−") + fmt(Math.abs(n)); }
 
 // ---- ledger feed ---------------------------------------------------------
@@ -246,7 +259,7 @@ async function snapshot() {
   return snap;
 }
 
-const HOLDINGS = [["bond", "BOND"], ["bondLocked", "BOND locked"], ["usd", "USD"], ["usdLocked", "USD locked"]];
+const HOLDINGS = [["bond", "Bonds"], ["bondLocked", "Bonds locked"], ["usd", "USD"], ["usdLocked", "USD locked"]];
 
 // What a transaction changed: holdings per role, from snapshots, and the
 // quote and counter-bid entries it opened, changed or closed, from metadata.
@@ -263,9 +276,9 @@ function effects(before, after, meta) {
     const f = node.FinalFields || node.NewFields || {};
     const p = node.PreviousFields || {};
     if (node.LedgerEntryType === "DirectedOffer") {
-      if (kind === "CreatedNode") out.push([null, `Quote opened, ${fmt(valueOf(f.Amount))} BOND locked`]);
+      if (kind === "CreatedNode") out.push([null, `Quote opened, ${bondsText(valueOf(f.Amount))} locked`]);
       else if (kind === "DeletedNode") out.push([null, "Quote closed"]);
-      else if ("Amount" in p) out.push([null, `Quote size ${fmt(valueOf(p.Amount))} → ${fmt(valueOf(f.Amount))} BOND`]);
+      else if ("Amount" in p) out.push([null, `Quote size ${fmt(valueOf(p.Amount))} → ${fmt(valueOf(f.Amount))} bonds`]);
     } else if (node.LedgerEntryType === "DirectedOfferCounter") {
       if (kind === "CreatedNode") out.push([null, `Counter-bid recorded, ${fmt(valueOf(f.Amount))} USD locked`]);
       else if (kind === "DeletedNode") out.push([null, "Counter-bid closed"]);
@@ -277,7 +290,7 @@ function effects(before, after, meta) {
 function feed(role, what, tx, res, final, fx) {
   const code = final?.meta?.TransactionResult || res.engine_result || res.error || "error";
   const good = code === "tesSUCCESS";
-  const settled = good && fx.some(([, t]) => t.startsWith("BOND +")) && fx.some(([, t]) => t.startsWith("USD +"));
+  const settled = good && fx.some(([, t]) => t.startsWith("Bonds +")) && fx.some(([, t]) => t.startsWith("USD +"));
   $("feed").prepend(el("li", {},
     el("div", {}, badge(role), " ", el("span", { class: "what" }, what)),
     el("div", {}, el("span", { class: "mono muted tx" }, tx.TransactionType), " ",
@@ -324,17 +337,17 @@ async function setup() {
     await submit("issuer", { TransactionType: "AccountSet", SetFlag: 8 }, "Enable USD transfers between holders");
     await submit("issuer", { TransactionType: "AccountSet", SetFlag: 17 }, "Allow USD to be locked for settlement");
     const res = await submit("issuer", { TransactionType: "MPTokenIssuanceCreate", Flags: 0x08 | 0x20, AssetScale: 0,
-                                         MPTokenMetadata: "424F4E44" }, "Issue the BOND token");
+                                         MPTokenMetadata: "41434D453331" }, `Issue ${BOND_NAME} as a token, $1,000 face each`);
     state.issuance = (await rpc("ledger_entry", { index: await created(res, "MPTokenIssuance") })).node.mpt_issuance_id;
     for (const role of ["seller", ...BUYERS]) {
-      await submit(role, { TransactionType: "TrustSet", LimitAmount: usd(1000000) }, "Open a USD line");
-      await submit(role, { TransactionType: "MPTokenAuthorize", MPTokenIssuanceID: state.issuance }, "Open a BOND holding");
+      await submit(role, { TransactionType: "TrustSet", LimitAmount: usd(1e9) }, "Open a USD line");
+      await submit(role, { TransactionType: "MPTokenAuthorize", MPTokenIssuanceID: state.issuance }, "Open a bond holding");
     }
     for (const role of BUYERS)
-      await submit("issuer", { TransactionType: "Payment", Destination: acct(role).address, Amount: usd(1000) },
-                   `Fund ${ROLES[role].label} with 1,000 USD`);
-    await submit("issuer", { TransactionType: "Payment", Destination: acct("seller").address, Amount: bond(100) },
-                 "Deliver 100 BOND to the Seller");
+      await submit("issuer", { TransactionType: "Payment", Destination: acct(role).address, Amount: usd(10_000_000) },
+                   `Fund ${ROLES[role].label} with 10,000,000 USD`);
+    await submit("issuer", { TransactionType: "Payment", Destination: acct("seller").address, Amount: bond(5000) },
+                 `Deliver ${bondsText(5000)} to the Seller`);
     save();
   } finally {
     $("autoClose").checked = auto;
@@ -392,7 +405,7 @@ function quotePrice(q, size) {
   return tier ? { unit: valueOf(tier.UnitPrice), total: size * valueOf(tier.UnitPrice) } : null;
 }
 const tierText = (q) => q.PriceTiers.map((t) =>
-  el("span", { class: "chip" }, `${fmt(valueOf(t.PriceTier.MinQuantity))}+ @ ${fmt(valueOf(t.PriceTier.UnitPrice))}`));
+  el("span", { class: "chip" }, `${fmt(valueOf(t.PriceTier.MinQuantity))}+ bonds @ ${px(valueOf(t.PriceTier.UnitPrice))}`));
 const buyersOf = (q) => (q.Counterparties || []).map((c) => roleOf(c.CounterpartyEntry.Account));
 
 async function refresh() {
@@ -412,7 +425,8 @@ async function refresh() {
 
 // ---- seller desk ---------------------------------------------------------
 
-let tiers = [[1, 10], [10, 9], [20, 8]];
+// Odd lots pay more: [from size in bonds, price in % of face].
+let tiers = [[1, 99.75], [100, 99.5], [1000, 99.25]];
 
 function renderQuoteForm() {
   const chosen = new Set([...document.querySelectorAll("#qBuyers input:checked")].map((i) => i.value));
@@ -424,32 +438,34 @@ function renderQuoteForm() {
   }));
   $("tiers").tBodies[0].replaceChildren(...tiers.map((t, i) => {
     const q = el("input", { type: "number", value: t[0], min: "1" });
-    const p = el("input", { type: "number", value: t[1], min: "0", step: "any" });
+    const p = el("input", { type: "number", value: t[1], min: "0", step: "0.125" });
     q.oninput = () => (tiers[i][0] = Number(q.value));
     p.oninput = () => (tiers[i][1] = Number(p.value));
-    return el("tr", {}, el("td", {}, q, " BOND"), el("td", {}, p, " USD"),
+    return el("tr", {}, el("td", {}, q, " bonds"), el("td", {}, p, " %"),
       el("td", {}, el("button", { onclick: () => { tiers.splice(i, 1); renderQuoteForm(); } }, "Remove")));
   }));
 }
+
+function renderFace() { $("qFace").textContent = `${face(Number($("qSize").value))} face of ${BOND_NAME}`; }
 
 async function sendQuote() {
   if (!acct("seller")) return;
   const buyers = [...document.querySelectorAll("#qBuyers input:checked")].map((i) => i.value);
   const tx = {
     TransactionType: "DirectedOfferCreate", Amount: bond($("qSize").value), PaymentAsset: { currency: "USD", issuer: acct("issuer").address },
-    PriceTiers: tiers.map(([q, p]) => ({ PriceTier: { MinQuantity: bond(q), UnitPrice: usd(p) } })),
+    PriceTiers: tiers.map(([q, p]) => ({ PriceTier: { MinQuantity: bond(q), UnitPrice: usd(toUsdPerBond(p)) } })),
     Counterparties: buyers.map((r) => ({ CounterpartyEntry: { Account: acct(r).address } })),
   };
   const secs = Number($("qExpire").value);
   if (secs > 0) tx.Expiration = Number((await rpc("ledger", { ledger_index: "validated" })).ledger.close_time) + secs;
-  await submit("seller", tx, `Quote ${$("qSize").value} BOND to ${buyers.map((r) => ROLES[r].label).join(", ") || "nobody"}`);
+  await submit("seller", tx, `Quote ${bondsText(Number($("qSize").value))} to ${buyers.map((r) => ROLES[r].label).join(", ") || "nobody"}`);
   refresh();
 }
 
 async function renderSeller({ quotes, bids, closeTime }) {
   $("sellerAddr").textContent = acct("seller").address;
   const p = await positions("seller");
-  $("sellerPos").replaceChildren(...posCards([["BOND available", p.bond], ["BOND locked in quotes", p.bondLocked], ["USD", p.usd]]));
+  $("sellerPos").replaceChildren(...posCards([["Bonds available", p.bond], ["Bonds locked in quotes", p.bondLocked], ["USD", p.usd]]));
 
   const mine = quotes.filter((q) => q.Account === acct("seller").address);
   if (!mine.length) return $("sellerQuotes").replaceChildren("None.");
@@ -457,25 +473,25 @@ async function renderSeller({ quotes, bids, closeTime }) {
     const expired = q.Expiration && closeTime > q.Expiration;
     const incoming = bids.filter((b) => b.DirectedOfferID === q.index);
     return el("div", { class: "card" },
-      el("div", { class: "row" }, el("b", {}, `${fmt(valueOf(q.Amount))} BOND left`), expired ? el("span", { class: "warn" }, "expired") : "",
+      el("div", { class: "row" }, el("b", {}, `${BOND_NAME} · ${bondsText(valueOf(q.Amount))} left`), expired ? el("span", { class: "warn" }, "expired") : "",
         el("span", { class: "mono muted" }, q.index.slice(0, 12) + "…")),
       el("div", { class: "row" }, el("span", { class: "muted" }, "Size tiers:"), ...tierText(q)),
       el("div", { class: "row" }, el("span", { class: "muted" }, "Counterparties:"), ...buyersOf(q).map(badge)),
       ...incoming.map((b) => el("div", { class: "bidcard" },
         el("div", { class: "row" }, badge(roleOf(b.Account)),
-          `bids ${fmt(valueOf(b.Amount))} USD for ${fmt(valueOf(b.Quantity))} BOND`,
-          el("span", { class: "muted" }, `(${fmt(valueOf(b.Amount) / valueOf(b.Quantity))} per bond)`)),
+          `bids ${px(valueOf(b.Amount) / valueOf(b.Quantity))} for ${bondsText(valueOf(b.Quantity))}`,
+          el("span", { class: "muted" }, `= ${fmt(valueOf(b.Amount))} USD`)),
         el("div", { class: "row" },
           el("button", { class: "primary", onclick: async () => {
             await submit("seller", { TransactionType: "DirectedOfferAccept", DirectedOfferCounterID: b.index },
-                         `Hit ${ROLES[roleOf(b.Account)].label}'s bid: ${fmt(valueOf(b.Quantity))} BOND for ${fmt(valueOf(b.Amount))} USD`);
+                         `Hit ${ROLES[roleOf(b.Account)].label}'s bid: ${fmt(valueOf(b.Quantity))} bonds at ${px(valueOf(b.Amount) / valueOf(b.Quantity))}`);
             refresh(); } }, "Hit bid"),
           el("button", { onclick: async () => {
             await submit("seller", { TransactionType: "DirectedOfferCancel", DirectedOfferCounterID: b.index },
                          `Decline ${ROLES[roleOf(b.Account)].label}'s bid`);
             refresh(); } }, "Decline")))),
       el("div", { class: "row", style: "margin-top:8px" }, el("button", { onclick: async () => {
-        await submit("seller", { TransactionType: "DirectedOfferCancel", DirectedOfferID: q.index }, "Pull quote; locked BOND returns");
+        await submit("seller", { TransactionType: "DirectedOfferCancel", DirectedOfferID: q.index }, "Pull quote; locked bonds return");
         refresh(); } }, "Pull quote")),
       rawDetails("Raw ledger entry", q));
   }));
@@ -490,29 +506,30 @@ function renderViewAs() {
 function quoteCard(q, role, closeTime, invited) {
   const expired = q.Expiration && closeTime > q.Expiration;
   const left = valueOf(q.Amount);
-  const size = el("input", { type: "number", value: Math.min(10, left), min: "1" });
+  const size = el("input", { type: "number", value: Math.min(500, left), min: "1" });
   const cost = el("span", { class: "muted" });
-  const total = el("input", { type: "number", placeholder: "total", min: "0", step: "any" });
+  const bidPx = el("input", { type: "number", placeholder: "price %", min: "0", step: "0.125" });
+  const bidTotal = () => Math.round(Number(size.value) * toUsdPerBond(Number(bidPx.value)) * 100) / 100;
   const update = () => {
     const pr = quotePrice(q, Number(size.value));
-    cost.textContent = pr ? `= ${fmt(pr.total)} USD at ${fmt(pr.unit)}` : "below the smallest tier";
+    cost.textContent = pr ? `${face(Number(size.value))} face at ${px(pr.unit)} = ${fmt(pr.total)} USD` : "below the smallest tier";
   };
   size.oninput = update; update();
   return el("div", { class: "card" },
-    el("div", { class: "row" }, badge("seller"), el("b", {}, `offers ${fmt(left)} BOND`),
+    el("div", { class: "row" }, badge("seller"), el("b", {}, `offers ${BOND_NAME} · ${bondsText(left)}`),
       expired ? el("span", { class: "warn" }, "expired") : "", invited ? "" : el("span", { class: "warn" }, "not addressed to you")),
     el("div", { class: "row" }, el("span", { class: "muted" }, "Size tiers:"), ...tierText(q)),
-    el("div", { class: "row" }, el("label", {}, "Size", size, "BOND"), cost),
+    el("div", { class: "row" }, el("label", {}, "Size", size, "bonds"), cost),
     el("div", { class: "row" },
       el("button", { class: "primary", onclick: async () => {
         await submit(role, { TransactionType: "DirectedOfferAccept", DirectedOfferID: q.index, Quantity: bond(size.value) },
-                     `Lift ${size.value} BOND at the quoted price`);
+                     `Lift ${bondsText(Number(size.value))} at the quoted price`);
         refresh(); } }, "Lift offer"),
-      el("span", { class: "muted" }, "or counter"), total, el("span", {}, "USD"),
+      el("span", { class: "muted" }, "or counter at"), bidPx, el("span", {}, "%"),
       el("button", { onclick: async () => {
         await submit(role, { TransactionType: "DirectedOfferCounterCreate", DirectedOfferID: q.index,
-                             Quantity: bond(size.value), Amount: usd(total.value) },
-                     `Counter-bid ${total.value} USD for ${size.value} BOND`);
+                             Quantity: bond(size.value), Amount: usd(bidTotal()) },
+                     `Counter-bid ${bidPx.value} for ${bondsText(Number(size.value))} (${fmt(bidTotal())} USD)`);
         refresh(); } }, "Send counter-bid")));
 }
 
@@ -523,7 +540,7 @@ async function renderBuyer({ quotes, bids, closeTime }) {
   const p = await positions(role);
   const myBids = bids.filter((b) => b.Account === me);
   const lockedUsd = myBids.reduce((s, b) => s + valueOf(b.Amount), 0);
-  $("buyerPos").replaceChildren(...posCards([["USD available", p.usd], ["USD locked in bids", lockedUsd], ["BOND", p.bond]]));
+  $("buyerPos").replaceChildren(...posCards([["USD available", p.usd], ["USD locked in bids", lockedUsd], ["Bonds", p.bond]]));
 
   const invited = quotes.filter((q) => (q.Counterparties || []).some((c) => c.CounterpartyEntry.Account === me));
   const others = quotes.filter((q) => !invited.includes(q));
@@ -534,7 +551,7 @@ async function renderBuyer({ quotes, bids, closeTime }) {
 
   const live = new Set(quotes.map((q) => q.index));
   $("buyerBids").replaceChildren(...(myBids.length ? myBids.map((b) => el("div", { class: "card" },
-    el("div", { class: "row" }, `${fmt(valueOf(b.Amount))} USD for ${fmt(valueOf(b.Quantity))} BOND`,
+    el("div", { class: "row" }, `${px(valueOf(b.Amount) / valueOf(b.Quantity))} for ${bondsText(valueOf(b.Quantity))} = ${fmt(valueOf(b.Amount))} USD`,
       el("span", { class: live.has(b.DirectedOfferID) ? "muted" : "warn" }, live.has(b.DirectedOfferID) ? "waiting for the seller" : "quote closed")),
     el("div", { class: "row" }, el("button", { onclick: async () => {
       await submit(role, { TransactionType: "DirectedOfferCancel", DirectedOfferCounterID: b.index }, "Withdraw counter-bid; locked USD returns");
@@ -548,7 +565,9 @@ $("closeBtn").onclick = async () => { await closeLedger(); refresh(); };
 $("setupBtn").onclick = setup;
 $("showRaw").onchange = () => document.querySelectorAll("details.raw").forEach((d) => (d.open = $("showRaw").checked));
 $("sendQuote").onclick = sendQuote;
-$("addTier").onclick = () => { const last = tiers.at(-1) || [0, 1]; tiers.push([last[0] + 10, last[1]]); renderQuoteForm(); };
+$("qSize").oninput = renderFace;
+renderFace();
+$("addTier").onclick = () => { const last = tiers.at(-1) || [0, 100]; tiers.push([last[0] * 10 || 1, last[1] - 0.25]); renderQuoteForm(); };
 $("viewAs").onchange = () => { state.viewAs = $("viewAs").value; save(); refresh(); };
 connect();
 </script>

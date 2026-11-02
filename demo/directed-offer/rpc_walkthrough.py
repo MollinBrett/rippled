@@ -5,10 +5,11 @@ Start the node with ./run-standalone.sh first. Every transaction is signed by
 the server (admin port), and the ledger is closed with ledger_accept after
 each one, because a standalone ledger only advances when asked to.
 
-Story: gw issues a BOND token (MPT) and a USD stablecoin (IOU). alice holds
-bonds and offers 50 of them to bob and carol only, paid in USD, at
-1+ for 10, 10+ for 9, 20+ for 8. dave is not on the list. Then alice offers
-20 more to bob, and they negotiate with a locked bid.
+Story: the Issuer issues ACME 4.25% 2031 bonds as an MPT, one token per bond
+of $1,000 face, and a USD stablecoin (IOU). The Seller holds $5MM face and
+quotes $2MM to Buyers A and B only, in percent of face: odd lots (under 100
+bonds) at 99.75, 100+ at 99.50, 1,000+ at 99.25. Buyer C is not on the list.
+Then the Seller quotes $1MM to Buyer A, and they negotiate with a counter-bid.
 """
 
 import json
@@ -17,6 +18,7 @@ import urllib.request
 
 URL = "http://127.0.0.1:5005"
 GENESIS = ("rHb9CJAWyB4rj91VRWn96DkukG4bwdtyTh", "snoPBrXtMeMyMHUVTgbuqAfg1SUTb")
+FACE = 1000  # USD face value of one bond token
 
 failures = 0
 
@@ -73,7 +75,7 @@ def new_account(name):
             "Amount": "10000000000",
         },
         GENESIS[1],
-        label=f"fund {name}",
+        label=f"open {name} account",
     )
     return acct
 
@@ -88,12 +90,12 @@ def check(label, actual, expected):
     )
 
 
-def usd_balance(acct, gw):
-    for line in rpc("account_lines", account=acct["address"], peer=gw["address"])[
+def usd_balance(acct, issuer):
+    for line in rpc("account_lines", account=acct["address"], peer=issuer["address"])[
         "lines"
     ]:
         if line["currency"] == "USD":
-            return line["balance"]
+            return float(line["balance"])
     return None
 
 
@@ -103,8 +105,13 @@ def bond_balance(acct, issuance):
     ]
     for o in objs:
         if o["MPTokenIssuanceID"] == issuance:
-            return o.get("MPTAmount", "0")
+            return int(o.get("MPTAmount", "0"))
     return None
+
+
+def per_bond(pct):
+    """USD per bond for a price in percent of face."""
+    return pct * FACE / 100
 
 
 def main():
@@ -114,248 +121,252 @@ def main():
     check("DirectedOffer enabled", entry.get("enabled"), True)
 
     print("Accounts")
-    gw, alice, bob, carol, dave = (
-        new_account(n) for n in ("gw", "alice", "bob", "carol", "dave")
+    issuer, seller, buyer_a, buyer_b, buyer_c = (
+        new_account(n) for n in ("Issuer", "Seller", "Buyer A", "Buyer B", "Buyer C")
     )
 
     print("Issuer setup")
     submit(
-        {"TransactionType": "AccountSet", "Account": gw["address"], "SetFlag": 8},
-        gw["secret"],
-        label="gw DefaultRipple",
+        {"TransactionType": "AccountSet", "Account": issuer["address"], "SetFlag": 8},
+        issuer["secret"],
+        label="enable USD transfers between holders",
     )
     submit(
-        {"TransactionType": "AccountSet", "Account": gw["address"], "SetFlag": 17},
-        gw["secret"],
-        label="gw AllowTrustLineLocking",
+        {"TransactionType": "AccountSet", "Account": issuer["address"], "SetFlag": 17},
+        issuer["secret"],
+        label="allow USD to be locked for settlement",
     )
     res = submit(
         {
             "TransactionType": "MPTokenIssuanceCreate",
-            "Account": gw["address"],
+            "Account": issuer["address"],
             "Flags": 0x08 | 0x20,
             "AssetScale": 0,
-            "MPTokenMetadata": "424F4E44",
+            "MPTokenMetadata": "41434D453331",
         },
-        gw["secret"],
-        label="gw issues BOND (MPT)",
+        issuer["secret"],
+        label="issue ACME 4.25% 2031 bonds (MPT)",
     )
-    issuance = next(
-        n["CreatedNode"]["LedgerIndex"]
-        for n in tx_meta(res)["AffectedNodes"]
-        if n.get("CreatedNode", {}).get("LedgerEntryType") == "MPTokenIssuance"
-    )
-    issuance = rpc("ledger_entry", index=issuance)["node"]["mpt_issuance_id"]
-    usd = {"currency": "USD", "issuer": gw["address"]}
-    bond = lambda v: {"mpt_issuance_id": issuance, "value": str(v)}
+    issuance = rpc("ledger_entry", index=created(res, "MPTokenIssuance"))["node"][
+        "mpt_issuance_id"
+    ]
+    usd = {"currency": "USD", "issuer": issuer["address"]}
+    bonds = lambda v: {"mpt_issuance_id": issuance, "value": str(v)}
     dollars = lambda v: {**usd, "value": str(v)}
 
-    for a in (alice, bob, carol, dave):
+    for a in (seller, buyer_a, buyer_b, buyer_c):
         submit(
             {
                 "TransactionType": "TrustSet",
                 "Account": a["address"],
-                "LimitAmount": dollars(100000),
+                "LimitAmount": dollars(1_000_000_000),
             },
             a["secret"],
-            label=f"{a['name']} trusts USD",
+            label=f"{a['name']} opens a USD line",
         )
-    submit(
-        {
-            "TransactionType": "MPTokenAuthorize",
-            "Account": alice["address"],
-            "MPTokenIssuanceID": issuance,
-        },
-        alice["secret"],
-        label="alice holds BOND",
-    )
+        submit(
+            {
+                "TransactionType": "MPTokenAuthorize",
+                "Account": a["address"],
+                "MPTokenIssuanceID": issuance,
+            },
+            a["secret"],
+            label=f"{a['name']} opens a bond holding",
+        )
     submit(
         {
             "TransactionType": "Payment",
-            "Account": gw["address"],
-            "Destination": alice["address"],
-            "Amount": bond(100),
+            "Account": issuer["address"],
+            "Destination": seller["address"],
+            "Amount": bonds(5000),
         },
-        gw["secret"],
-        label="gw sends alice 100 BOND",
+        issuer["secret"],
+        label="deliver 5,000 bonds ($5MM face) to the Seller",
     )
-    for a in (bob, carol, dave):
+    for a in (buyer_a, buyer_b, buyer_c):
         submit(
             {
                 "TransactionType": "Payment",
-                "Account": gw["address"],
+                "Account": issuer["address"],
                 "Destination": a["address"],
-                "Amount": dollars(1000),
+                "Amount": dollars(10_000_000),
             },
-            gw["secret"],
-            label=f"gw sends {a['name']} 1000 USD",
+            issuer["secret"],
+            label=f"fund {a['name']} with 10,000,000 USD",
         )
 
-    print("DirectedOfferCreate")
-    tiers = [(1, 10), (10, 9), (20, 8)]
-    create = {
+    print("Directed quote (DirectedOfferCreate)")
+    tiers = [(1, 99.75), (100, 99.50), (1000, 99.25)]
+    quote = {
         "TransactionType": "DirectedOfferCreate",
-        "Account": alice["address"],
-        "Amount": bond(50),
+        "Account": seller["address"],
+        "Amount": bonds(2000),
         "PaymentAsset": usd,
         "PriceTiers": [
-            {"PriceTier": {"MinQuantity": bond(q), "UnitPrice": dollars(p)}}
+            {"PriceTier": {"MinQuantity": bonds(q), "UnitPrice": dollars(per_bond(p))}}
             for q, p in tiers
         ],
         "Counterparties": [
-            {"CounterpartyEntry": {"Account": a["address"]}} for a in (bob, carol)
+            {"CounterpartyEntry": {"Account": a["address"]}} for a in (buyer_a, buyer_b)
         ],
     }
     bad = dict(
-        create, Counterparties=[{"CounterpartyEntry": {"Account": alice["address"]}}]
+        quote, Counterparties=[{"CounterpartyEntry": {"Account": seller["address"]}}]
     )
-    submit(bad, alice["secret"], expect="temMALFORMED", label="seller names itself")
-    res = submit(create, alice["secret"], label="alice offers 50 BOND to bob and carol")
-    offer_id = next(
-        n["CreatedNode"]["LedgerIndex"]
-        for n in tx_meta(res)["AffectedNodes"]
-        if n.get("CreatedNode", {}).get("LedgerEntryType") == "DirectedOffer"
-    )
-    print(f"  offer {offer_id}")
-    check("alice BOND after lock", bond_balance(alice, issuance), "50")
+    submit(bad, seller["secret"], expect="temMALFORMED", label="Seller quotes itself")
+    res = submit(quote, seller["secret"], label="quote $2MM face to Buyers A and B")
+    quote_id = created(res, "DirectedOffer")
+    print(f"  quote {quote_id}")
+    check("Seller bonds after lock", bond_balance(seller, issuance), 3000)
     seq = res["tx_json"]["Sequence"]
     by_seq = rpc(
-        "ledger_entry", directed_offer={"account": alice["address"], "seq": seq}
+        "ledger_entry", directed_offer={"account": seller["address"], "seq": seq}
     )
-    check("ledger_entry by account+seq", by_seq.get("index"), offer_id)
-    objs = rpc("account_objects", account=alice["address"], type="directed_offer")[
+    check("ledger_entry by account+seq", by_seq.get("index"), quote_id)
+    objs = rpc("account_objects", account=seller["address"], type="directed_offer")[
         "account_objects"
     ]
-    check("account_objects type=directed_offer", [o["index"] for o in objs], [offer_id])
+    check("account_objects type=directed_offer", [o["index"] for o in objs], [quote_id])
 
-    def accept(buyer, qty, expect="tesSUCCESS", label=None, **extra):
+    def lift(buyer, qty, expect="tesSUCCESS", label=None, **extra):
         return submit(
             {
                 "TransactionType": "DirectedOfferAccept",
                 "Account": buyer["address"],
-                "DirectedOfferID": offer_id,
-                "Quantity": bond(qty),
+                "DirectedOfferID": quote_id,
+                "Quantity": bonds(qty),
                 **extra,
             },
             buyer["secret"],
             expect=expect,
-            label=label or f"{buyer['name']} buys {qty}",
+            label=label or f"{buyer['name']} lifts {qty} bonds",
         )
 
-    print("DirectedOfferAccept")
-    accept(dave, 5, expect="tecNO_PERMISSION", label="dave (not listed) buys 5")
-    accept(bob, 5)
-    check("bob BOND", bond_balance(bob, issuance), "5")
-    check("bob USD (paid 5 x 10)", usd_balance(bob, gw), "950")
-    accept(carol, 25)
-    check("carol BOND", bond_balance(carol, issuance), "25")
-    check("carol USD (paid 25 x 8)", usd_balance(carol, gw), "800")
-    accept(
-        bob,
-        19,
-        label="bob buys 19 with SendMax 100",
+    print("Lifting the offer (DirectedOfferAccept)")
+    lift(buyer_c, 50, expect="tecNO_PERMISSION", label="Buyer C (not quoted) lifts 50")
+    lift(buyer_a, 50, label="Buyer A lifts an odd lot of 50 at 99.75")
+    check("Buyer A bonds", bond_balance(buyer_a, issuance), 50)
+    check("Buyer A USD (paid 49,875)", usd_balance(buyer_a, issuer), 9_950_125)
+    lift(buyer_b, 1200, label="Buyer B lifts 1,200 at 99.25")
+    check("Buyer B bonds", bond_balance(buyer_b, issuance), 1200)
+    check("Buyer B USD (paid 1,191,000)", usd_balance(buyer_b, issuer), 8_809_000)
+    lift(
+        buyer_a,
+        700,
+        label="Buyer A lifts 700 at 99.50, capped at 690,000 USD",
         expect="tecPATH_PARTIAL",
-        SendMax=dollars(100),
+        SendMax=dollars(690_000),
     )
-    accept(bob, 21, expect="tecINSUFFICIENT_FUNDS", label="bob buys 21 of 20 left")
-    accept(bob, 19, label="bob buys 19 more (tier 10+ at 9)")
-    check("bob BOND", bond_balance(bob, issuance), "24")
-    check("bob USD (paid 50 + 171)", usd_balance(bob, gw), "779")
-    check("alice USD (received 50 + 200 + 171)", usd_balance(alice, gw), "421")
-    left = rpc("ledger_entry", index=offer_id)["node"]["Amount"]["value"]
-    check("left on offer", left, "1")
+    lift(buyer_a, 751, expect="tecINSUFFICIENT_FUNDS", label="Buyer A lifts 751 of 750")
+    lift(buyer_a, 700, label="Buyer A lifts 700 at 99.50")
+    check("Buyer A bonds", bond_balance(buyer_a, issuance), 750)
+    check(
+        "Buyer A USD (paid 49,875 + 696,500)", usd_balance(buyer_a, issuer), 9_253_625
+    )
+    check("Seller USD received", usd_balance(seller, issuer), 1_937_375)
+    left = rpc("ledger_entry", index=quote_id)["node"]["Amount"]["value"]
+    check("left on the quote", left, "50")
 
-    print("DirectedOfferCancel")
+    print("Pulling the quote (DirectedOfferCancel)")
     submit(
         {
             "TransactionType": "DirectedOfferCancel",
-            "Account": bob["address"],
-            "DirectedOfferID": offer_id,
+            "Account": buyer_b["address"],
+            "DirectedOfferID": quote_id,
         },
-        bob["secret"],
+        buyer_b["secret"],
         expect="tecNO_PERMISSION",
-        label="bob cancels alice's offer",
+        label="Buyer B pulls the Seller's quote",
     )
     submit(
         {
             "TransactionType": "DirectedOfferCancel",
-            "Account": alice["address"],
-            "DirectedOfferID": offer_id,
+            "Account": seller["address"],
+            "DirectedOfferID": quote_id,
         },
-        alice["secret"],
-        label="alice cancels",
+        seller["secret"],
+        label="Seller pulls the quote",
     )
-    check("alice BOND after cancel", bond_balance(alice, issuance), "51")
-    gone = rpc("ledger_entry", index=offer_id)
-    check("offer deleted", gone.get("error"), "entryNotFound")
+    check("Seller bonds after pull", bond_balance(seller, issuance), 3050)
+    gone = rpc("ledger_entry", index=quote_id)
+    check("quote deleted", gone.get("error"), "entryNotFound")
 
     print("Negotiation (DirectedOfferCounterCreate)")
     res = submit(
         dict(
-            create,
-            Amount=bond(20),
+            quote,
+            Amount=bonds(1000),
             PriceTiers=[
-                {"PriceTier": {"MinQuantity": bond(1), "UnitPrice": dollars(10)}}
+                {
+                    "PriceTier": {
+                        "MinQuantity": bonds(1),
+                        "UnitPrice": dollars(per_bond(99.50)),
+                    }
+                }
             ],
-            Counterparties=[{"CounterpartyEntry": {"Account": bob["address"]}}],
+            Counterparties=[{"CounterpartyEntry": {"Account": buyer_a["address"]}}],
         ),
-        alice["secret"],
-        label="alice offers 20 BOND to bob at 10",
+        seller["secret"],
+        label="quote $1MM face to Buyer A at 99.50",
     )
-    offer2 = created(res, "DirectedOffer")
+    quote2 = created(res, "DirectedOffer")
 
-    def bid(buyer, qty, total, expect="tesSUCCESS"):
+    def counter(buyer, qty, pct, expect="tesSUCCESS"):
         res = submit(
             {
                 "TransactionType": "DirectedOfferCounterCreate",
                 "Account": buyer["address"],
-                "DirectedOfferID": offer2,
-                "Quantity": bond(qty),
-                "Amount": dollars(total),
+                "DirectedOfferID": quote2,
+                "Quantity": bonds(qty),
+                "Amount": dollars(qty * per_bond(pct)),
             },
             buyer["secret"],
             expect=expect,
-            label=f"{buyer['name']} bids {total} USD for {qty}",
+            label=f"{buyer['name']} counter-bids {pct} for {qty} bonds",
         )
         return created(res, "DirectedOfferCounter") if expect == "tesSUCCESS" else None
 
-    bid(carol, 20, 150, expect="tecNO_PERMISSION")
-    low = bid(bob, 10, 50)
-    check("bob USD with 50 locked", usd_balance(bob, gw), "729")
+    counter(buyer_c, 1000, 99.25, expect="tecNO_PERMISSION")
+    low = counter(buyer_a, 500, 99.00)
+    check("Buyer A USD with 495,000 locked", usd_balance(buyer_a, issuer), 8_758_625)
     seller_bids = rpc(
-        "account_objects", account=alice["address"], type="directed_offer_counter"
+        "account_objects", account=seller["address"], type="directed_offer_counter"
     )["account_objects"]
-    check("alice sees the bid", [o["index"] for o in seller_bids], [low])
+    check("Seller sees the bid", [o["index"] for o in seller_bids], [low])
     submit(
         {
             "TransactionType": "DirectedOfferCancel",
-            "Account": alice["address"],
+            "Account": seller["address"],
             "DirectedOfferCounterID": low,
         },
-        alice["secret"],
-        label="alice declines it",
+        seller["secret"],
+        label="Seller declines it",
     )
-    check("bob USD refunded", usd_balance(bob, gw), "779")
+    check("Buyer A USD refunded", usd_balance(buyer_a, issuer), 9_253_625)
 
-    better = bid(bob, 20, 150)
-    take = {
+    better = counter(buyer_a, 1000, 99.25)
+    hit = {
         "TransactionType": "DirectedOfferAccept",
-        "Account": alice["address"],
+        "Account": seller["address"],
         "DirectedOfferCounterID": better,
     }
     submit(
-        dict(take, Account=bob["address"]),
-        bob["secret"],
+        dict(hit, Account=buyer_a["address"]),
+        buyer_a["secret"],
         "tecNO_PERMISSION",
-        "bob takes his own bid",
+        "Buyer A hits its own bid",
     )
-    submit(take, alice["secret"], label="alice takes bob's bid")
-    check("bob BOND", bond_balance(bob, issuance), "44")
-    check("bob USD (paid 150, not 200)", usd_balance(bob, gw), "629")
-    check("alice USD", usd_balance(alice, gw), "571")
-    check("alice BOND", bond_balance(alice, issuance), "31")
+    submit(hit, seller["secret"], label="Seller hits Buyer A's bid at 99.25")
+    check("Buyer A bonds", bond_balance(buyer_a, issuance), 1750)
     check(
-        "offer closed", rpc("ledger_entry", index=offer2).get("error"), "entryNotFound"
+        "Buyer A USD (paid 992,500, not 995,000)",
+        usd_balance(buyer_a, issuer),
+        8_261_125,
+    )
+    check("Seller USD", usd_balance(seller, issuer), 2_929_875)
+    check("Seller bonds", bond_balance(seller, issuance), 2050)
+    check(
+        "quote closed", rpc("ledger_entry", index=quote2).get("error"), "entryNotFound"
     )
     check("bid gone", rpc("ledger_entry", index=better).get("error"), "entryNotFound")
 

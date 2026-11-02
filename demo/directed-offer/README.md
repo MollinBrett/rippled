@@ -30,8 +30,14 @@ python3 -m http.server 8088 --bind 127.0.0.1
 ```
 
 Then open http://127.0.0.1:8088/ and press "Set up market". This opens accounts for an Issuer,
-a Seller and three buyers from the genesis account. The Issuer issues BOND (an MPT) and USD (an
-IOU stablecoin), delivers 100 BOND to the Seller and 1,000 USD to each buyer.
+a Seller and three buyers from the genesis account. The Issuer issues ACME 4.25% 2031 bonds as an
+MPT, one token per bond of $1,000 face, and a USD stablecoin (an IOU). It delivers 5,000 bonds
+($5MM face) to the Seller and 10,000,000 USD to each buyer.
+
+Prices are in percent of face, as bonds trade: 99.50 means 995 USD per bond, which is the unit
+price the ledger stores. The default quote has odd lots (under 100 bonds) at 99.75, 100+ at 99.50
+and 1,000+ at 99.25, so a larger size gets a better price. A counter-bid is entered as a price in
+percent of face and locks the total in USD. The walkthrough tells the same story.
 
 The page is split in three, so it is always clear who is acting:
 
