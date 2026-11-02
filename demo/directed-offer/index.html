@@ -1,0 +1,406 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DirectedOffer Demo</title>
+<style>
+  :root {
+    --bg: #f6f7f9; --panel: #fff; --text: #1b1f24; --muted: #5d6673; --line: #dde1e6;
+    --accent: #2457d6; --ok: #1d7f45; --bad: #b42318; --warn: #9a6700; --chip: #eef2fb;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #111418; --panel: #1a1e24; --text: #e6e9ed; --muted: #98a2ae; --line: #2c333c;
+      --accent: #7aa2ff; --ok: #4cc38a; --bad: #ff7a6e; --warn: #e3b341; --chip: #222a36;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font: 14px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+  header { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; padding: 12px 16px;
+           border-bottom: 1px solid var(--line); background: var(--panel); position: sticky; top: 0; z-index: 1; }
+  header h1 { font-size: 16px; margin: 0 8px 0 0; }
+  .status { color: var(--muted); }
+  .status b { color: var(--text); }
+  main { display: grid; gap: 16px; padding: 16px; max-width: 1200px; margin: 0 auto;
+         grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  section { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 14px; min-width: 0; }
+  section.wide { grid-column: 1 / -1; }
+  h2 { font-size: 14px; margin: 0 0 10px; }
+  table { border-collapse: collapse; width: 100%; }
+  th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { color: var(--muted); font-weight: 500; font-size: 12px; }
+  td.num { font-variant-numeric: tabular-nums; }
+  .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
+  .muted { color: var(--muted); }
+  button { font: inherit; padding: 6px 12px; border-radius: 6px; border: 1px solid var(--line);
+           background: var(--panel); color: var(--text); cursor: pointer; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  button:disabled { opacity: .5; cursor: default; }
+  input, select { font: inherit; padding: 5px 8px; border: 1px solid var(--line); border-radius: 6px;
+                  background: var(--panel); color: var(--text); min-width: 0; }
+  input[type=number] { width: 90px; }
+  label { display: inline-flex; gap: 6px; align-items: center; }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 8px; }
+  .chip { display: inline-block; background: var(--chip); border-radius: 10px; padding: 1px 8px; margin: 1px 2px; font-size: 12px; }
+  .ok { color: var(--ok); } .bad { color: var(--bad); } .warn { color: var(--warn); }
+  .offer { border: 1px solid var(--line); border-radius: 8px; padding: 10px; margin-bottom: 10px; }
+  .offer-head { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px; margin-bottom: 6px; }
+  #log { max-height: 280px; overflow: auto; margin: 0; padding: 0; list-style: none; }
+  #log li { padding: 4px 0; border-bottom: 1px solid var(--line); }
+  .tiers td, .tiers th { padding: 3px 6px; }
+  @media (max-width: 800px) { main { grid-template-columns: minmax(0, 1fr); padding: 16px; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>DirectedOffer demo</h1>
+  <span class="status" id="conn">connecting…</span>
+  <span class="status">ledger <b id="ledger">–</b></span>
+  <button id="closeBtn" title="ledger_accept">Close ledger</button>
+  <label class="status"><input type="checkbox" id="autoClose" checked> close after each transaction</label>
+  <button id="setupBtn" class="primary">Set up demo accounts</button>
+</header>
+
+<main>
+  <section class="wide">
+    <h2>Accounts</h2>
+    <div id="accounts" class="muted">No demo accounts yet. Press “Set up demo accounts”.</div>
+  </section>
+
+  <section>
+    <h2>Create a directed offer</h2>
+    <div class="row">
+      <label>Seller <select id="cSeller"></select></label>
+      <label>Sell <input type="number" id="cAmount" value="50" min="0" step="any"></label>
+      <select id="cSold"><option>BOND</option><option>USD</option></select>
+      <label>for <select id="cPay"><option>USD</option><option>BOND</option><option>XRP</option></select></label>
+    </div>
+    <table class="tiers" id="tiers">
+      <thead><tr><th>From quantity</th><th>Unit price</th><th></th></tr></thead>
+      <tbody></tbody>
+    </table>
+    <div class="row" style="margin-top:6px"><button id="addTier">Add tier</button></div>
+    <div class="row">
+      <span class="muted">Buyers:</span>
+      <span id="cBuyers"></span>
+    </div>
+    <div class="row">
+      <label>Expires in <input type="number" id="cExpire" placeholder="never" min="1"> seconds</label>
+    </div>
+    <button id="createBtn" class="primary">Create offer</button>
+  </section>
+
+  <section>
+    <h2>Activity</h2>
+    <ul id="log"></ul>
+  </section>
+
+  <section class="wide">
+    <h2>Open offers</h2>
+    <div id="offers" class="muted">No offers.</div>
+  </section>
+</main>
+
+<script>
+"use strict";
+// Talks to a standalone xrpld through its admin WebSocket. The server signs
+// with the secrets below; this is only safe on a throwaway local ledger.
+const WS_URL = "ws://127.0.0.1:6006";
+const GENESIS = { name: "genesis", address: "rHb9CJAWyB4rj91VRWn96DkukG4bwdtyTh", secret: "snoPBrXtMeMyMHUVTgbuqAfg1SUTb" };
+const NAMES = ["gw", "alice", "bob", "carol", "dave"];
+const STORE = "directed-offer-demo";
+
+let ws, nextId = 1;
+const pending = new Map();
+let state = load() || { accounts: {}, issuance: null };
+
+function load() { try { return JSON.parse(localStorage.getItem(STORE)); } catch { return null; } }
+function save() { try { localStorage.setItem(STORE, JSON.stringify(state)); } catch {} }
+
+const $ = (id) => document.getElementById(id);
+const el = (tag, attrs = {}, ...kids) => {
+  const e = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) {
+    if (k === "class") e.className = v; else if (k.startsWith("on")) e[k] = v; else e.setAttribute(k, v);
+  }
+  for (const k of kids) e.append(k);
+  return e;
+};
+
+function connect() {
+  ws = new WebSocket(WS_URL);
+  ws.onopen = async () => { $("conn").innerHTML = "<b class='ok'>connected</b> to " + WS_URL; await validateState(); refresh(); };
+  ws.onclose = () => { $("conn").innerHTML = "<b class='bad'>disconnected</b>, retrying…"; setTimeout(connect, 2000); };
+  ws.onmessage = (m) => {
+    const msg = JSON.parse(m.data);
+    const p = pending.get(msg.id);
+    if (p) { pending.delete(msg.id); p(msg.result ?? msg); }
+  };
+}
+
+function rpc(command, params = {}) {
+  return new Promise((resolve) => {
+    const id = nextId++;
+    pending.set(id, resolve);
+    ws.send(JSON.stringify({ id, command, ...params }));
+  });
+}
+
+async function closeLedger() { await rpc("ledger_accept"); await refreshLedger(); }
+
+function log(text, cls = "") {
+  $("log").prepend(el("li", { class: cls }, text));
+}
+
+async function submit(tx, who, label) {
+  const res = await rpc("submit", { tx_json: tx, secret: who.secret });
+  const code = res.engine_result || res.error || "error";
+  const good = code === "tesSUCCESS";
+  log(`${label}: ${code}${good ? "" : " — " + (res.engine_result_message || res.error_message || "")}`, good ? "ok" : "bad");
+  if ($("autoClose").checked) await closeLedger();
+  return res;
+}
+
+async function created(res, type) {
+  const tx = await rpc("tx", { transaction: res.tx_json.hash });
+  const node = tx.meta.AffectedNodes.find((n) => n.CreatedNode?.LedgerEntryType === type);
+  return node?.CreatedNode.LedgerIndex;
+}
+
+// ---- assets -------------------------------------------------------------
+
+function amount(asset, value) {
+  const gw = state.accounts.gw.address;
+  if (asset === "XRP") return String(Math.ceil(Number(value) * 1e6));  // drops
+  if (asset === "USD") return { currency: "USD", issuer: gw, value: String(value) };
+  return { mpt_issuance_id: state.issuance, value: String(value) };
+}
+function issue(asset) {
+  if (asset === "XRP") return { currency: "XRP" };
+  if (asset === "USD") return { currency: "USD", issuer: state.accounts.gw.address };
+  return { mpt_issuance_id: state.issuance };
+}
+function assetOf(amt) {
+  if (typeof amt === "string") return "XRP";
+  return amt.mpt_issuance_id ? "BOND" : amt.currency;
+}
+function valueOf(amt) { return typeof amt === "string" ? Number(amt) / 1e6 : Number(amt.value); }
+function fmt(n) { return Number(n).toLocaleString(undefined, { maximumFractionDigits: 6 }); }
+
+// ---- setup --------------------------------------------------------------
+
+async function setup() {
+  $("setupBtn").disabled = true;
+  const auto = $("autoClose").checked;
+  $("autoClose").checked = true;
+  try {
+    state = { accounts: {}, issuance: null };
+    for (const name of NAMES) {
+      const w = await rpc("wallet_propose");
+      state.accounts[name] = { name, address: w.account_id, secret: w.master_seed };
+      await submit({ TransactionType: "Payment", Account: GENESIS.address, Destination: w.account_id, Amount: "10000000000" },
+                   GENESIS, `fund ${name} with 10,000 XRP`);
+    }
+    const { gw, alice, bob, carol, dave } = state.accounts;
+    await submit({ TransactionType: "AccountSet", Account: gw.address, SetFlag: 8 }, gw, "gw enables rippling");
+    await submit({ TransactionType: "AccountSet", Account: gw.address, SetFlag: 17 }, gw, "gw allows trust-line locking");
+    const res = await submit({ TransactionType: "MPTokenIssuanceCreate", Account: gw.address, Flags: 0x08 | 0x20,
+                               AssetScale: 0, MPTokenMetadata: "424F4E44" }, gw, "gw issues BOND (MPT)");
+    const idx = await created(res, "MPTokenIssuance");
+    state.issuance = (await rpc("ledger_entry", { index: idx })).node.mpt_issuance_id;
+    for (const a of [alice, bob, carol, dave]) {
+      await submit({ TransactionType: "TrustSet", Account: a.address, LimitAmount: amount("USD", 1000000) }, a, `${a.name} trusts USD`);
+      await submit({ TransactionType: "MPTokenAuthorize", Account: a.address, MPTokenIssuanceID: state.issuance }, a, `${a.name} holds BOND`);
+      await submit({ TransactionType: "Payment", Account: gw.address, Destination: a.address, Amount: amount("USD", 1000) }, gw, `gw sends ${a.name} 1,000 USD`);
+    }
+    await submit({ TransactionType: "Payment", Account: gw.address, Destination: alice.address, Amount: amount("BOND", 100) }, gw, "gw sends alice 100 BOND");
+    save();
+    log("Demo ready: alice holds 100 BOND; everyone holds 1,000 USD.", "ok");
+  } finally {
+    $("autoClose").checked = auto;
+    $("setupBtn").disabled = false;
+    refresh();
+  }
+}
+
+// A restarted standalone node starts from a fresh genesis ledger, so saved
+// accounts may no longer exist.
+async function validateState() {
+  const gw = state.accounts.gw;
+  if (!gw) return;
+  const info = await rpc("account_info", { account: gw.address });
+  if (info.error) { state = { accounts: {}, issuance: null }; save(); log("Node was restarted; set up demo accounts again.", "warn"); }
+}
+
+// ---- reads --------------------------------------------------------------
+
+async function balances(a) {
+  const info = await rpc("account_info", { account: a.address });
+  const lines = await rpc("account_lines", { account: a.address });
+  const mpts = await rpc("account_objects", { account: a.address, type: "mptoken" });
+  const usd = lines.lines?.find((l) => l.currency === "USD");
+  const mpt = mpts.account_objects?.find((o) => o.MPTokenIssuanceID === state.issuance);
+  return {
+    xrp: info.account_data ? Number(info.account_data.Balance) / 1e6 : null,
+    usd: usd ? Number(usd.balance) : null,
+    bond: mpt ? Number(mpt.MPTAmount || 0) : null,
+    bondLocked: mpt ? Number(mpt.LockedAmount || 0) : 0,
+    owners: info.account_data?.OwnerCount ?? 0,
+  };
+}
+
+async function refreshLedger() {
+  const r = await rpc("ledger_current");
+  $("ledger").textContent = r.ledger_current_index ?? "–";
+}
+
+async function refresh() {
+  await refreshLedger();
+  renderForm();
+  const accts = Object.values(state.accounts);
+  if (!accts.length) {
+    $("accounts").textContent = "No demo accounts yet. Press “Set up demo accounts”.";
+    $("offers").textContent = "No offers.";
+    return;
+  }
+  const rows = [];
+  for (const a of accts) {
+    const b = await balances(a);
+    rows.push(el("tr", {}, el("td", {}, a.name), el("td", { class: "mono" }, a.address),
+      el("td", { class: "num" }, b.xrp == null ? "–" : fmt(b.xrp)),
+      el("td", { class: "num" }, a.name === "gw" ? "issuer" : b.usd == null ? "–" : fmt(b.usd)),
+      el("td", { class: "num" }, a.name === "gw" ? "issuer" : b.bond == null ? "–" : fmt(b.bond) + (b.bondLocked ? ` (+${fmt(b.bondLocked)} locked)` : "")),
+      el("td", { class: "num" }, String(b.owners))));
+  }
+  $("accounts").replaceChildren(el("table", {},
+    el("thead", {}, el("tr", {}, ...["Name", "Address", "XRP", "USD", "BOND", "Objects"].map((h) => el("th", {}, h)))),
+    el("tbody", {}, ...rows)));
+  await renderOffers();
+}
+
+// ---- create form ---------------------------------------------------------
+
+let tiers = [[1, 10], [10, 9], [20, 8]];
+
+function renderForm() {
+  const names = Object.keys(state.accounts).filter((n) => n !== "gw");
+  const seller = $("cSeller").value || "alice";
+  $("cSeller").replaceChildren(...names.map((n) => el("option", n === seller ? { selected: "" } : {}, n)));
+  const chosen = new Set([...document.querySelectorAll("#cBuyers input:checked")].map((i) => i.value));
+  const first = !document.querySelector("#cBuyers input");
+  $("cBuyers").replaceChildren(...names.filter((n) => n !== $("cSeller").value).map((n) => {
+    const box = el("input", { type: "checkbox", value: n });
+    box.checked = first ? (n === "bob" || n === "carol") : chosen.has(n);
+    return el("label", { style: "margin-right:10px" }, box, n);
+  }));
+  const pay = $("cPay").value;
+  $("tiers").tBodies[0].replaceChildren(...tiers.map((t, i) => {
+    const q = el("input", { type: "number", value: t[0], min: "0", step: "any" });
+    const p = el("input", { type: "number", value: t[1], min: "0", step: "any" });
+    q.oninput = () => (tiers[i][0] = Number(q.value));
+    p.oninput = () => (tiers[i][1] = Number(p.value));
+    return el("tr", {}, el("td", {}, q, " ", $("cSold").value), el("td", {}, p, " ", pay),
+      el("td", {}, el("button", { onclick: () => { tiers.splice(i, 1); renderForm(); } }, "Remove")));
+  }));
+}
+
+async function createOffer() {
+  const seller = state.accounts[$("cSeller").value];
+  if (!seller) return log("Set up demo accounts first.", "warn");
+  const sold = $("cSold").value, pay = $("cPay").value;
+  const buyers = [...document.querySelectorAll("#cBuyers input:checked")].map((i) => state.accounts[i.value]);
+  const tx = {
+    TransactionType: "DirectedOfferCreate", Account: seller.address,
+    Amount: amount(sold, $("cAmount").value), PaymentAsset: issue(pay),
+    PriceTiers: tiers.map(([q, p]) => ({ PriceTier: { MinQuantity: amount(sold, q), UnitPrice: amount(pay, p) } })),
+    Counterparties: buyers.map((b) => ({ CounterpartyEntry: { Account: b.address } })),
+  };
+  const secs = Number($("cExpire").value);
+  if (secs > 0) {
+    const r = await rpc("ledger", { ledger_index: "validated" });
+    tx.Expiration = Number(r.ledger.close_time) + secs;
+  }
+  await submit(tx, seller, `${seller.name} offers ${$("cAmount").value} ${sold} for ${pay} to ${buyers.map((b) => b.name).join(", ") || "nobody"}`);
+  refresh();
+}
+
+// ---- offers --------------------------------------------------------------
+
+function nameOf(addr) { return Object.values(state.accounts).find((a) => a.address === addr)?.name ?? addr; }
+
+// Mirrors directedOfferPrice: the tier with the largest MinQuantity not above
+// the quantity prices the whole purchase. Display only; the ledger decides.
+function quote(offer, qty) {
+  let tier = null;
+  for (const t of offer.PriceTiers) if (valueOf(t.PriceTier.MinQuantity) <= qty) tier = t.PriceTier;
+  if (!tier) return null;
+  const unit = typeof tier.UnitPrice === "string" ? Number(tier.UnitPrice) : Number(tier.UnitPrice.value);
+  const total = qty * unit;
+  return typeof tier.UnitPrice === "string" ? { text: fmt(Math.ceil(total) / 1e6) + " XRP" } : { text: fmt(total) + " " + assetOf(tier.UnitPrice) };
+}
+
+async function renderOffers() {
+  const offers = [];
+  for (const a of Object.values(state.accounts)) {
+    const r = await rpc("account_objects", { account: a.address, type: "directed_offer" });
+    offers.push(...(r.account_objects || []));
+  }
+  if (!offers.length) return $("offers").replaceChildren("No offers.");
+  const close = (await rpc("ledger", { ledger_index: "validated" })).ledger.close_time;
+  $("offers").replaceChildren(...offers.map((o) => renderOffer(o, close)));
+}
+
+function renderOffer(o, closeTime) {
+  const sold = assetOf(o.Amount), left = valueOf(o.Amount);
+  const pay = o.PaymentAsset.mpt_issuance_id ? "BOND" : o.PaymentAsset.currency;
+  const buyers = o.Counterparties ? o.Counterparties.map((c) => nameOf(c.CounterpartyEntry.Account)) : [];
+  const expired = o.Expiration && closeTime > o.Expiration;
+  const tierText = o.PriceTiers.map((t) => {
+    const p = t.PriceTier.UnitPrice;
+    const unit = typeof p === "string" ? fmt(Number(p) / 1e6) + " XRP" : fmt(p.value) + " " + assetOf(p);
+    return el("span", { class: "chip" }, `${fmt(valueOf(t.PriceTier.MinQuantity))}+ @ ${unit}`);
+  });
+
+  const buyer = el("select", {}, ...Object.keys(state.accounts).filter((n) => n !== "gw" && n !== nameOf(o.Account)).map((n) => el("option", {}, n)));
+  const qty = el("input", { type: "number", value: Math.min(5, left), min: "0", step: "any" });
+  const price = el("span", { class: "muted" });
+  const update = () => { const q = quote(o, Number(qty.value)); price.textContent = q ? "≈ " + q.text : "below the first tier"; };
+  qty.oninput = update; update();
+
+  const acceptBtn = el("button", { class: "primary", onclick: async () => {
+    const b = state.accounts[buyer.value];
+    await submit({ TransactionType: "DirectedOfferAccept", Account: b.address, DirectedOfferID: o.index, Quantity: amount(sold, qty.value) },
+                 b, `${b.name} buys ${qty.value} ${sold} from ${nameOf(o.Account)}`);
+    refresh();
+  } }, "Accept");
+  const canceller = el("select", {}, ...Object.keys(state.accounts).filter((n) => n !== "gw").map((n) => el("option", n === nameOf(o.Account) ? { selected: "" } : {}, n)));
+  const cancelBtn = el("button", { onclick: async () => {
+    const a = state.accounts[canceller.value];
+    await submit({ TransactionType: "DirectedOfferCancel", Account: a.address, DirectedOfferID: o.index }, a, `${a.name} cancels ${nameOf(o.Account)}'s offer`);
+    refresh();
+  } }, "Cancel");
+
+  return el("div", { class: "offer" },
+    el("div", { class: "offer-head" },
+      el("span", {}, el("b", {}, nameOf(o.Account)), ` sells ${fmt(left)} ${sold} for ${pay}`,
+        expired ? el("span", { class: "warn" }, " · expired") : ""),
+      el("span", { class: "mono muted" }, o.index.slice(0, 16) + "…")),
+    el("div", { class: "row" }, el("span", { class: "muted" }, "Tiers:"), ...tierText),
+    el("div", { class: "row" }, el("span", { class: "muted" }, "Buyers:"),
+      ...(buyers.length ? buyers.map((b) => el("span", { class: "chip" }, b)) : [el("span", { class: "chip" }, "domain " + (o.DomainID || "").slice(0, 8))])),
+    el("div", { class: "row" }, buyer, qty, el("span", {}, sold), price, acceptBtn, el("span", { class: "muted" }, "|"), canceller, cancelBtn));
+}
+
+// ---- wire up -------------------------------------------------------------
+
+$("closeBtn").onclick = async () => { await closeLedger(); log("Ledger closed."); refresh(); };
+$("setupBtn").onclick = setup;
+$("createBtn").onclick = createOffer;
+$("addTier").onclick = () => { const last = tiers.at(-1) || [0, 1]; tiers.push([last[0] + 10, last[1]]); renderForm(); };
+for (const id of ["cSeller", "cSold", "cPay"]) $(id).onchange = renderForm;
+connect();
+</script>
+</body>
+</html>
